@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Travel Planner</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <h1>🧭 Smart Travel Planner</h1>
+  <p>Smart Planning for the Modern Traveler</p>
+</header>
+
+<nav id="tabNav">
+  <button data-tab="auth" class="active">1. Account</button>
+  <button data-tab="destinations">2. Destinations</button>
+  <button data-tab="budget">3. Budget Tracker</button>
+  <button data-tab="mapweather">4. Map & Weather</button>
+</nav>
+
+<main>
+
+  <!-- MODULE 1: AUTH -->
+  <section id="auth" class="panel active">
+    <div class="card" id="authCard">
+      <h2 class="section-title">Create your account / Log in</h2>
+      <p class="subtext">Module 1 — User Authentication (Register, Login, Logout)</p>
+
+      <div id="loggedOutView">
+        <div style="display:flex; gap:20px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:260px;">
+            <h4>Register</h4>
+            <label>Full Name</label>
+            <input id="regName" placeholder="e.g. Akash Kumar">
+            <label>Email</label>
+            <input id="regEmail" type="email" placeholder="you@example.com">
+            <label>Password</label>
+            <input id="regPassword" type="password" placeholder="Minimum 6 characters">
+            <button class="btn" onclick="registerUser()">Register</button>
+            <div id="regMsg" class="msg"></div>
+          </div>
+          <div style="flex:1; min-width:260px;">
+            <h4>Login</h4>
+            <label>Email</label>
+            <input id="loginEmail" type="email" placeholder="you@example.com">
+            <label>Password</label>
+            <input id="loginPassword" type="password" placeholder="Your password">
+            <button class="btn" onclick="loginUser()">Login</button>
+            <div id="loginMsg" class="msg"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="loggedInView" class="hidden">
+        <div class="userbar">
+          <div class="top-user">
+            <div class="avatar" id="avatarInitial">A</div>
+            <div>
+              <div style="font-weight:700;" id="welcomeName">Welcome!</div>
+              <div style="font-size:12px; color:var(--muted);" id="welcomeEmail"></div>
+            </div>
+          </div>
+          <button class="btn secondary" onclick="logoutUser()">Logout</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MODULE 2: DESTINATIONS -->
+  <section id="destinations" class="panel">
+    <div class="card">
+      <h2 class="section-title">Destination Search & Details</h2>
+      <p class="subtext">Module 2 — search destinations, view details and top attractions</p>
+      <input id="destSearch" placeholder="Search destinations (e.g. beach, mountain, Goa, Manali)..." oninput="renderDestinations()">
+      <div class="dest-list" id="destList" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="card hidden" id="destDetailCard">
+      <button class="btn secondary small" onclick="closeDestDetail()">← Back to list</button>
+      <div id="destDetailBody" style="margin-top:14px;"></div>
+    </div>
+  </section>
+
+  <!-- MODULE 3: BUDGET -->
+  <section id="budget" class="panel">
+    <div class="card">
+      <h2 class="section-title">Trip Budget & Expense Tracker</h2>
+      <p class="subtext">Module 3 — set a budget and estimate category-wise expenses</p>
+
+      <label>Total Trip Budget (₹)</label>
+      <input id="totalBudget" type="number" placeholder="e.g. 25000" oninput="updateBudget()">
+
+      <div class="grid" style="margin-top:10px;">
+        <div>
+          <label>Accommodation (₹/night x nights)</label>
+          <input id="expHotel" type="number" placeholder="e.g. 8000" oninput="updateBudget()">
+        </div>
+        <div>
+          <label>Transportation (₹)</label>
+          <input id="expTransport" type="number" placeholder="e.g. 6000" oninput="updateBudget()">
+        </div>
+        <div>
+          <label>Food (₹)</label>
+          <input id="expFood" type="number" placeholder="e.g. 4000" oninput="updateBudget()">
+        </div>
+        <div>
+          <label>Activities & Sightseeing (₹)</label>
+          <input id="expActivities" type="number" placeholder="e.g. 3000" oninput="updateBudget()">
+        </div>
+      </div>
+
+      <div style="margin-top:20px;">
+        <div style="display:flex; justify-content:space-between; font-size:13px;">
+          <span>Estimated Spend: <strong id="spendLabel">₹0</strong></span>
+          <span>Budget: <strong id="budgetLabel">₹0</strong></span>
+        </div>
+        <div class="budget-bar"><div class="budget-fill" id="budgetFill" style="width:0%"></div></div>
+        <div id="budgetStatus" class="msg show"></div>
+      </div>
+
+      <table>
+        <thead><tr><th>Category</th><th>Amount (₹)</th><th>% of Budget</th></tr></thead>
+        <tbody id="budgetTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- MODULE 4: MAP & WEATHER -->
+  <section id="mapweather" class="panel">
+    <div class="card">
+      <h2 class="section-title">Map & Weather</h2>
+      <p class="subtext">Module 4 — view destination on a map and check live weather (real data via Open-Meteo)</p>
+      <div class="grid">
+        <div>
+          <label>Destination</label>
+          <select id="mwDestSelect" onchange="loadMapWeather()"></select>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h4 style="margin-top:0;">Map</h4>
+        <iframe id="mapFrame" loading="lazy"></iframe>
+      </div>
+
+      <div class="card">
+        <h4 style="margin-top:0;">Live Weather</h4>
+        <div id="weatherLoading" class="subtext">Loading weather...</div>
+        <div id="weatherContent" class="hidden">
+          <div class="weather-box">
+            <div class="weather-temp" id="wTemp">--°C</div>
+            <div>
+              <div id="wCondition" style="font-weight:600;">--</div>
+              <div class="subtext" id="wWind" style="margin:0;">Wind: -- km/h</div>
+            </div>
+          </div>
+          <div class="weather-days" id="wForecast"></div>
+        </div>
+        <div id="weatherError" class="msg error"></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="js/app.js"></script>
+</body>
+</html>
