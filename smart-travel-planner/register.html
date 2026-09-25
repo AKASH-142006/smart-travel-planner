@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - Smart Travel Planner</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .auth-page-container {
+      min-height: calc(100vh - 120px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 16px;
+    }
+    .auth-box {
+      max-width: 440px;
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px 28px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    }
+    .auth-box h2 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--primary);
+    }
+    .auth-box label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      margin: 14px 0 6px;
+    }
+    .auth-box input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+      font-family: inherit;
+      box-sizing: border-box;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .auth-box input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(0, 140, 255, 0.15);
+    }
+    .auth-box .auth-footer {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+    .auth-box .auth-footer a {
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .auth-box .auth-footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+<header class="navbar">
+  <div class="navbar-inner" style="max-width:1100px;">
+    <a href="index.html" class="brand-group">
+      <span class="brand-logo">🧭</span>
+      <div class="brand-text">
+        <h1>Smart Travel Planner</h1>
+        <p>Inspiring Your Next Journey</p>
+      </div>
+    </a>
+    <a href="index.html" class="btn secondary small" style="background:rgba(255,255,255,0.15); color:white; border:none;">Explore Trips →</a>
+  </div>
+</header>
+
+<div class="auth-page-container">
+  <div class="auth-box">
+    <h2>Create an Account</h2>
+    <p class="subtext">Join Smart Travel Planner to save trips and track budgets</p>
+
+    <label>Full Name</label>
+    <input id="regName" placeholder="e.g. Akash Kumar">
+
+    <label>Email Address</label>
+    <input id="regEmail" type="email" placeholder="you@example.com">
+
+    <label>Password</label>
+    <input id="regPassword" type="password" placeholder="Minimum 6 characters">
+
+    <button class="btn" style="width:100%; margin-top:18px;" onclick="handleRegister()">Register Account</button>
+    <div id="regMsg" class="msg"></div>
+
+    <div class="auth-footer">
+      Already have an account? <a href="login.html">Log in here</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = 'http://localhost:5000/api';
+
+  function showMsg(id, text, type) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = "msg show " + type;
+  }
+
+  async function handleRegister() {
+    const name = document.getElementById('regName').value.trim();
+    const email = document.getElementById('regEmail').value.trim().toLowerCase();
+    const pass = document.getElementById('regPassword').value;
+
+    if (!name || !email || !pass) return showMsg('regMsg', "Please fill all fields.", "error");
+    if (!email.includes('@')) return showMsg('regMsg', "Enter a valid email.", "error");
+    if (pass.length < 6) return showMsg('regMsg', "Password must be at least 6 characters.", "error");
+
+    try {
+      const res = await fetch(`${API_BASE}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password: pass })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        return showMsg('regMsg', data.error || "Registration failed.", "error");
+      }
+
+      showMsg('regMsg', "Account registered successfully! Redirecting to login...", "success");
+      setTimeout(() => {
+        window.location.href = "login.html";
+      }, 1200);
+    } catch (err) {
+      console.warn("Backend API offline, using localStorage fallback:", err);
+      const users = JSON.parse(localStorage.getItem("stp_users") || "{}");
+      if (users[email]) return showMsg('regMsg', "An account with this email already exists.", "error");
+      users[email] = { name, email, pass };
+      localStorage.setItem("stp_users", JSON.stringify(users));
+      showMsg('regMsg', "Account created! Redirecting to login...", "success");
+      setTimeout(() => {
+        window.location.href = "login.html";
+      }, 1200);
+    }
+  }
+
+  // Allow pressing Enter to submit
+  document.getElementById('regPassword').addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') handleRegister();
+  });
+</script>
+</body>
+</html>

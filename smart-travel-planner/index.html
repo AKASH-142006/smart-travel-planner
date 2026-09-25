@@ -1,169 +1,513 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Travel Planner</title>
-<link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Travel Planner — MakeMyTrip Style Travel Platform</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Leaflet.js – free interactive maps, no API key needed -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>">
 </head>
 <body>
 
-<header>
-  <h1>🧭 Smart Travel Planner</h1>
-  <p>Smart Planning for the Modern Traveler</p>
-</header>
+  <!-- 1. TOP NAVBAR -->
+  <header class="navbar">
+    <div class="navbar-inner">
+      <a href="index.html" class="brand-group">
+        <span class="brand-logo">🧭</span>
+        <div class="brand-text">
+          <h1>Smart Travel Planner</h1>
+          <p>Inspiring Your Next Journey</p>
+        </div>
+      </a>
 
-<nav id="tabNav">
-  <button data-tab="auth" class="active">1. Account</button>
-  <button data-tab="destinations">2. Destinations</button>
-  <button data-tab="budget">3. Budget Tracker</button>
-  <button data-tab="mapweather">4. Map & Weather</button>
-</nav>
+      <!-- Quick Module Tabs -->
+      <nav class="nav-links" id="tabNav">
+        <button class="nav-tab-btn active" data-tab="destinations">
+          <span>✈️</span> Explore Trips
+        </button>
+        <button class="nav-tab-btn" data-tab="budget">
+          <span>💰</span> Budget Planner
+        </button>
+        <button class="nav-tab-btn" data-tab="mapweather">
+          <span>🗺️</span> Map & Weather
+        </button>
+        <button class="nav-tab-btn" data-tab="auth">
+          <span>👤</span> Account
+        </button>
+      </nav>
 
-<main>
+      <!-- Right Actions: Trip Cart + Auth -->
+      <div class="nav-actions">
+        <button class="trip-cart-btn" onclick="toggleCartDrawer()">
+          <span>🎒 Trip Cart</span>
+          <span class="cart-badge" id="cartCountBadge">0</span>
+        </button>
 
-  <!-- MODULE 1: AUTH -->
-  <section id="auth" class="panel active">
-    <div class="card" id="authCard">
-      <h2 class="section-title">Create your account / Log in</h2>
-      <p class="subtext">Module 1 — User Authentication (Register, Login, Logout)</p>
+        <div id="headerAuthActions" style="display:flex; align-items:center; gap:8px;">
+          <a href="login.html" id="headerLoginBtn" class="btn secondary small">Login</a>
+          <a href="register.html" id="headerRegisterBtn" class="btn accent small">Sign Up</a>
+          
+          <div id="headerUserView" class="hidden" style="display:flex; align-items:center; gap:10px;">
+            <div style="display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.12); padding:4px 12px; border-radius:20px;">
+              <span style="width:8px; height:8px; border-radius:50%; background:#10b981;"></span>
+              <span id="headerUserName" style="font-size:13px; font-weight:700; color:white;">Akash</span>
+            </div>
+            <button class="btn secondary small" style="background:rgba(255,255,255,0.15); color:white; border:none;" onclick="logoutUser()">Logout</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
 
+  <!-- 2. HERO BANNER -->
+  <section class="hero-wrapper">
+    <div class="hero-headline">
+      <div class="hero-pill">✨ Handcrafted Holiday Packages & Real-Time Itineraries</div>
+      <h2 class="hero-title">Where would you like to <span>travel next?</span></h2>
+      <p class="hero-subtitle">Discover India's top trending beach getaways, majestic snow peaks, royal palaces, and serene backwaters with smart budget estimation.</p>
+    </div>
+  </section>
+
+  <!-- 3. FLOATING SEARCH & BOOKING WIDGET (MakeMyTrip signature) -->
+  <section class="booking-widget-card">
+    <div class="widget-grid">
+      <div class="widget-field">
+        <span class="widget-label">Destination / Keyword</span>
+        <input id="destSearch" type="text" placeholder="e.g. Goa, Manali, Jaipur, Beach..." oninput="filterDestinations()">
+      </div>
+      <div class="widget-field">
+        <span class="widget-label">Ideal Season</span>
+        <select id="seasonFilter" onchange="filterDestinations()">
+          <option value="all">Any Season</option>
+          <option value="Oct - Mar">Winter (Oct - Mar)</option>
+          <option value="Mar - Jun">Summer (Mar - Jun)</option>
+          <option value="Jun - Sep">Monsoon / Green (Jun - Sep)</option>
+        </select>
+      </div>
+      <div class="widget-field">
+        <span class="widget-label">Max Budget (₹)</span>
+        <input id="maxPriceFilter" type="number" placeholder="No limit" oninput="filterDestinations()">
+      </div>
+      <button class="widget-btn-search" onclick="searchButtonAction()">
+        <span>🔍 Search Trips</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- 4. MAIN CONTENT AREA -->
+  <main class="main-content">
+
+    <!-- MODULE 2: DESTINATIONS & TOURS (Default active view) -->
+    <section id="destinations" class="panel active">
+      <!-- Category Strip Filter -->
+      <div class="category-strip">
+        <button class="category-pill active" onclick="setCategoryFilter('all', this)">🌐 All Destinations</button>
+        <button class="category-pill" onclick="setCategoryFilter('Beach', this)">🏖️ Coastal & Beaches</button>
+        <button class="category-pill" onclick="setCategoryFilter('Mountain', this)">🏔️ Mountain & Valleys</button>
+        <button class="category-pill" onclick="setCategoryFilter('Heritage', this)">🏰 Heritage & Forts</button>
+        <button class="category-pill" onclick="setCategoryFilter('Nature', this)">🌿 Nature & Backwaters</button>
+        <button class="category-pill" onclick="setCategoryFilter('Adventure', this)">🧗 River & Adventure</button>
+      </div>
+
+      <div class="section-header">
+        <div>
+          <h2>Trending Destinations in India</h2>
+          <p>Curated holiday destinations with live weather, top attractions, and budget estimates</p>
+        </div>
+        <div id="resultsCount" style="font-size:13px; font-weight:700; color:var(--muted);">12 destinations found</div>
+      </div>
+
+      <!-- Destination Cards Grid -->
+      <div class="dest-grid" id="destList"></div>
+
+      <!-- Destination Detail View Modal/Card -->
+      <div class="detail-card hidden" id="destDetailCard">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <button class="btn secondary small" onclick="closeDestDetail()">← Back to All Destinations</button>
+          <div id="detailActionSlot"></div>
+        </div>
+        <div id="destDetailBody"></div>
+      </div>
+    </section>
+
+    <!-- MODULE 3: BUDGET TRACKER -->
+    <section id="budget" class="panel">
+      <div class="budget-dashboard">
+        <div class="section-header">
+          <div>
+            <h2>Trip Budget & Cost Calculator</h2>
+            <p>Customize your target budget and plan category expenses in real-time</p>
+          </div>
+          <button class="btn secondary small" onclick="syncBudgetFromCart()">🔄 Sync from My Trip Cart</button>
+        </div>
+
+        <div class="budget-summary-banner">
+          <div class="budget-summary-item">
+            <p>Total Trip Budget</p>
+            <h3 id="budgetLabel">₹0</h3>
+          </div>
+          <div class="budget-summary-item">
+            <p>Estimated Expenses</p>
+            <h3 id="spendLabel" style="color:#60a5fa;">₹0</h3>
+          </div>
+          <div class="budget-summary-item">
+            <p>Remaining Balance</p>
+            <h3 id="balanceLabel" style="color:#34d399;">₹0</h3>
+          </div>
+        </div>
+
+        <div class="budget-progress-container">
+          <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700; margin-bottom:6px;">
+            <span>Budget Utilization</span>
+            <span id="budgetPctText">0%</span>
+          </div>
+          <div class="budget-bar-track">
+            <div class="budget-bar-fill" id="budgetFill" style="width:0%"></div>
+          </div>
+          <div id="budgetStatus" class="msg show" style="margin-top:12px;"></div>
+        </div>
+
+        <div style="margin:24px 0 10px;">
+          <label style="font-weight:700; font-size:13px; color:var(--primary); margin-bottom:8px; display:block;">1. Set Target Trip Budget (₹)</label>
+          <input id="totalBudget" type="number" placeholder="e.g. 35000" style="width:100%; max-width:320px; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px; font-size:16px; font-weight:700;" oninput="updateBudget()">
+        </div>
+
+        <h4 style="margin:20px 0 10px; font-size:15px; color:var(--primary);">2. Category-wise Breakdown (₹)</h4>
+        <div class="expense-grid">
+          <div class="expense-input-card">
+            <label>🏨 Hotel & Stay</label>
+            <input id="expHotel" type="number" placeholder="8000" oninput="updateBudget()">
+          </div>
+          <div class="expense-input-card">
+            <label>🚗 Transport & Flights</label>
+            <input id="expTransport" type="number" placeholder="6000" oninput="updateBudget()">
+          </div>
+          <div class="expense-input-card">
+            <label>🍽️ Food & Dining</label>
+            <input id="expFood" type="number" placeholder="4000" oninput="updateBudget()">
+          </div>
+          <div class="expense-input-card">
+            <label>🎟️ Activities & Entry</label>
+            <input id="expActivities" type="number" placeholder="3000" oninput="updateBudget()">
+          </div>
+        </div>
+
+        <h4 style="margin:26px 0 10px; font-size:15px; color:var(--primary);">3. Expense Allocation Summary</h4>
+        <table class="table-modern">
+          <thead>
+            <tr>
+              <th>Expense Category</th>
+              <th>Estimated Cost</th>
+              <th>% of Target Budget</th>
+            </tr>
+          </thead>
+          <tbody id="budgetTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- MODULE 4: MAP & LIVE WEATHER -->
+    <section id="mapweather" class="panel">
+      <div class="map-page-wrapper">
+
+        <!-- Section Header -->
+        <div class="section-header" style="margin-bottom:18px;">
+          <div>
+            <h2>Interactive Map &amp; Live Weather</h2>
+            <p>Powered by OpenStreetMap &amp; Leaflet.js — fully interactive, 100% free</p>
+          </div>
+          <div class="map-dest-select-wrap">
+            <select id="mwDestSelect" onchange="loadMapWeather()"></select>
+          </div>
+        </div>
+
+        <!-- Destination Quick-Pick Strip -->
+        <div class="map-dest-strip" id="mapDestStrip"></div>
+
+        <!-- Map + Weather 2-column layout -->
+        <div class="map-weather-container">
+
+          <!-- LEFT: Leaflet Map -->
+          <div class="map-column">
+            <div class="map-column-header">
+              <span>📍 Live Interactive Map</span>
+              <div class="map-zoom-hint">Scroll to zoom · Drag to pan · Click markers for details</div>
+            </div>
+            <div id="leafletMap"></div>
+            <div id="poiLegendContainer" class="poi-legend-container"></div>
+          </div>
+
+          <!-- RIGHT: Weather -->
+          <div class="weather-card">
+            <h4 style="margin:0 0 16px; color:var(--primary); font-size:15px; font-weight:800;">☀️ Live Weather Conditions</h4>
+            <div id="weatherLoading" class="subtext" style="padding:20px 0;">Fetching live satellite weather...</div>
+            <div id="weatherContent" class="hidden">
+              <div class="weather-main-row">
+                <div class="weather-temp" id="wTemp">--°C</div>
+                <div>
+                  <div id="wCondition" style="font-size:20px; font-weight:800; color:var(--primary);">--</div>
+                  <div class="subtext" id="wWind" style="margin:6px 0 0;">Wind: -- km/h</div>
+                </div>
+              </div>
+              <h5 style="margin:22px 0 10px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">4-Day Forecast</h5>
+              <div id="wForecast" class="weather-days"></div>
+            </div>
+            <div id="weatherError" class="msg error"></div>
+            <!-- Destination Info Box -->
+            <div id="destInfoBox" class="dest-info-box hidden">
+              <div id="destInfoImg" class="dest-info-img"></div>
+              <div class="dest-info-body">
+                <h4 id="destInfoName">--</h4>
+                <div id="destInfoMeta"></div>
+                <button class="btn small" style="margin-top:10px; width:100%;" onclick="addCurrentMapDestToCart()">🎒 Add to Trip Cart</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ BELOW-MAP SECTION ══ -->
+        <div class="map-below-row">
+
+          <!-- PLACES LIST PANEL -->
+          <div class="places-list-panel">
+            <div class="places-list-header">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:18px;">🗺️</span>
+                <div>
+                  <div style="font-weight:800;font-size:14px;color:#0a2540;">Famous Places &amp; Stays</div>
+                  <div style="font-size:11px;color:#64748b;" id="placesPanelDestName">Select a destination</div>
+                </div>
+              </div>
+              <span id="placesPanelCount" class="places-count-badge">0 places</span>
+            </div>
+            <div id="placesList" class="places-list-scroll">
+              <div class="places-empty">🌍 Select a destination above to see all tourist places, hotels &amp; attractions on the map.</div>
+            </div>
+          </div>
+
+          <!-- ROUTE FINDER PANEL -->
+          <div class="route-finder-panel">
+            <div class="route-finder-header">
+              <div>
+                <div style="font-weight:800;font-size:14px;color:#0a2540;">🧭 Travel Route from My Location</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px;">Get estimated travel time &amp; see the route on map</div>
+              </div>
+            </div>
+
+            <!-- Transport Mode Tabs -->
+            <div class="route-mode-tabs">
+              <button class="route-mode-tab active" id="routeTab-car"   onclick="showRouteForMode('car')">
+                <span class="route-tab-icon">🚗</span>
+                <span class="route-tab-label">Car</span>
+                <span class="route-tab-time" id="routeTime-car">--</span>
+              </button>
+              <button class="route-mode-tab" id="routeTab-bike"  onclick="showRouteForMode('bike')">
+                <span class="route-tab-icon">🏍️</span>
+                <span class="route-tab-label">Bike</span>
+                <span class="route-tab-time" id="routeTime-bike">--</span>
+              </button>
+              <button class="route-mode-tab" id="routeTab-bus"   onclick="showRouteForMode('bus')">
+                <span class="route-tab-icon">🚌</span>
+                <span class="route-tab-label">Bus</span>
+                <span class="route-tab-time" id="routeTime-bus">--</span>
+              </button>
+              <button class="route-mode-tab" id="routeTab-train" onclick="showRouteForMode('train')">
+                <span class="route-tab-icon">🚂</span>
+                <span class="route-tab-label">Train</span>
+                <span class="route-tab-time" id="routeTime-train">--</span>
+              </button>
+            </div>
+
+            <button class="btn route-go-btn" id="routeGoBtn" onclick="calculateAllRoutes()">
+              📍 Show Routes from My Location
+            </button>
+
+            <div id="routeResultBox" class="route-result-box hidden">
+              <div id="routeResultContent"></div>
+            </div>
+            <div id="routeErrorBox" class="msg error" style="margin-top:10px;"></div>
+          </div>
+
+        </div><!-- end .map-below-row -->
+
+      </div>
+    </section>
+
+    <!-- MODULE 1: ACCOUNT & PROFILE -->
+    <section id="auth" class="panel">
+
+      <!-- ── LOGGED OUT VIEW ── -->
       <div id="loggedOutView">
-        <div style="display:flex; gap:20px; flex-wrap:wrap;">
-          <div style="flex:1; min-width:260px;">
-            <h4>Register</h4>
-            <label>Full Name</label>
-            <input id="regName" placeholder="e.g. Akash Kumar">
-            <label>Email</label>
-            <input id="regEmail" type="email" placeholder="you@example.com">
-            <label>Password</label>
-            <input id="regPassword" type="password" placeholder="Minimum 6 characters">
-            <button class="btn" onclick="registerUser()">Register</button>
-            <div id="regMsg" class="msg"></div>
+        <div class="account-hero-banner">
+          <div class="account-hero-content">
+            <div class="account-hero-badge">✈️ Your Travel Dashboard</div>
+            <h2>Plan smarter.<br>Travel better.</h2>
+            <p>Create a free account to save your dream destinations, track your budget, and build a personalised trip itinerary — all in one place.</p>
+            <div class="account-hero-actions">
+              <a href="login.html" class="btn" id="accountLoginBtn" style="padding:13px 32px; font-size:15px; font-weight:700; box-shadow:0 6px 20px rgba(0,140,255,0.35);">🔑 Log In</a>
+              <a href="register.html" class="btn account-signup-btn" id="accountSignupBtn" style="padding:13px 32px; font-size:15px; font-weight:700;">🚀 Create Free Account</a>
+            </div>
           </div>
-          <div style="flex:1; min-width:260px;">
-            <h4>Login</h4>
-            <label>Email</label>
-            <input id="loginEmail" type="email" placeholder="you@example.com">
-            <label>Password</label>
-            <input id="loginPassword" type="password" placeholder="Your password">
-            <button class="btn" onclick="loginUser()">Login</button>
-            <div id="loginMsg" class="msg"></div>
+          <div class="account-hero-features">
+            <div class="acct-feature-card">
+              <div class="acct-feature-icon">🎒</div>
+              <div>
+                <strong>Trip Cart</strong>
+                <p>Add destinations and build your itinerary with a click</p>
+              </div>
+            </div>
+            <div class="acct-feature-card">
+              <div class="acct-feature-icon">💰</div>
+              <div>
+                <strong>Budget Planner</strong>
+                <p>Sync your cart directly to the smart cost calculator</p>
+              </div>
+            </div>
+            <div class="acct-feature-card">
+              <div class="acct-feature-icon">🗄️</div>
+              <div>
+                <strong>Cloud Saved</strong>
+                <p>Your data is safely stored and available on any device</p>
+              </div>
+            </div>
+            <div class="acct-feature-card">
+              <div class="acct-feature-icon">🗺️</div>
+              <div>
+                <strong>Live Maps & Weather</strong>
+                <p>Check real-time conditions for every destination</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
+      <!-- ── LOGGED IN VIEW ── -->
       <div id="loggedInView" class="hidden">
-        <div class="userbar">
-          <div class="top-user">
-            <div class="avatar" id="avatarInitial">A</div>
+        <!-- Profile Header -->
+        <div class="profile-header-card">
+          <div class="profile-avatar-wrap">
+            <div class="profile-avatar" id="avatarInitial">A</div>
+            <div class="profile-avatar-status"></div>
+          </div>
+          <div class="profile-meta">
+            <h2 id="welcomeName">Welcome back!</h2>
+            <div id="welcomeEmail" class="profile-email">user@example.com</div>
+            <div class="profile-tag">🟢 Active Traveller</div>
+          </div>
+          <button class="btn profile-logout-btn" onclick="logoutUser()" id="profileLogoutBtn">
+            ← Log Out
+          </button>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="profile-stats-row">
+          <div class="profile-stat-card">
+            <div class="profile-stat-icon">🎒</div>
             <div>
-              <div style="font-weight:700;" id="welcomeName">Welcome!</div>
-              <div style="font-size:12px; color:var(--muted);" id="welcomeEmail"></div>
+              <div class="profile-stat-value" id="profileCartCount">0</div>
+              <div class="profile-stat-label">Trips in Cart</div>
             </div>
           </div>
-          <button class="btn secondary" onclick="logoutUser()">Logout</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- MODULE 2: DESTINATIONS -->
-  <section id="destinations" class="panel">
-    <div class="card">
-      <h2 class="section-title">Destination Search & Details</h2>
-      <p class="subtext">Module 2 — search destinations, view details and top attractions</p>
-      <input id="destSearch" placeholder="Search destinations (e.g. beach, mountain, Goa, Manali)..." oninput="renderDestinations()">
-      <div class="dest-list" id="destList" style="margin-top:16px;"></div>
-    </div>
-
-    <div class="card hidden" id="destDetailCard">
-      <button class="btn secondary small" onclick="closeDestDetail()">← Back to list</button>
-      <div id="destDetailBody" style="margin-top:14px;"></div>
-    </div>
-  </section>
-
-  <!-- MODULE 3: BUDGET -->
-  <section id="budget" class="panel">
-    <div class="card">
-      <h2 class="section-title">Trip Budget & Expense Tracker</h2>
-      <p class="subtext">Module 3 — set a budget and estimate category-wise expenses</p>
-
-      <label>Total Trip Budget (₹)</label>
-      <input id="totalBudget" type="number" placeholder="e.g. 25000" oninput="updateBudget()">
-
-      <div class="grid" style="margin-top:10px;">
-        <div>
-          <label>Accommodation (₹/night x nights)</label>
-          <input id="expHotel" type="number" placeholder="e.g. 8000" oninput="updateBudget()">
-        </div>
-        <div>
-          <label>Transportation (₹)</label>
-          <input id="expTransport" type="number" placeholder="e.g. 6000" oninput="updateBudget()">
-        </div>
-        <div>
-          <label>Food (₹)</label>
-          <input id="expFood" type="number" placeholder="e.g. 4000" oninput="updateBudget()">
-        </div>
-        <div>
-          <label>Activities & Sightseeing (₹)</label>
-          <input id="expActivities" type="number" placeholder="e.g. 3000" oninput="updateBudget()">
-        </div>
-      </div>
-
-      <div style="margin-top:20px;">
-        <div style="display:flex; justify-content:space-between; font-size:13px;">
-          <span>Estimated Spend: <strong id="spendLabel">₹0</strong></span>
-          <span>Budget: <strong id="budgetLabel">₹0</strong></span>
-        </div>
-        <div class="budget-bar"><div class="budget-fill" id="budgetFill" style="width:0%"></div></div>
-        <div id="budgetStatus" class="msg show"></div>
-      </div>
-
-      <table>
-        <thead><tr><th>Category</th><th>Amount (₹)</th><th>% of Budget</th></tr></thead>
-        <tbody id="budgetTableBody"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- MODULE 4: MAP & WEATHER -->
-  <section id="mapweather" class="panel">
-    <div class="card">
-      <h2 class="section-title">Map & Weather</h2>
-      <p class="subtext">Module 4 — view destination on a map and check live weather (real data via Open-Meteo)</p>
-      <div class="grid">
-        <div>
-          <label>Destination</label>
-          <select id="mwDestSelect" onchange="loadMapWeather()"></select>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:16px;">
-        <h4 style="margin-top:0;">Map</h4>
-        <iframe id="mapFrame" loading="lazy"></iframe>
-      </div>
-
-      <div class="card">
-        <h4 style="margin-top:0;">Live Weather</h4>
-        <div id="weatherLoading" class="subtext">Loading weather...</div>
-        <div id="weatherContent" class="hidden">
-          <div class="weather-box">
-            <div class="weather-temp" id="wTemp">--°C</div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-icon">🌍</div>
             <div>
-              <div id="wCondition" style="font-weight:600;">--</div>
-              <div class="subtext" id="wWind" style="margin:0;">Wind: -- km/h</div>
+              <div class="profile-stat-value">6</div>
+              <div class="profile-stat-label">Destinations Available</div>
             </div>
           </div>
-          <div class="weather-days" id="wForecast"></div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-icon">🗄️</div>
+            <div>
+              <div class="profile-stat-value" style="font-size:14px; font-weight:700; color:#10b981;">Live</div>
+              <div class="profile-stat-label">MySQL Connection</div>
+            </div>
+          </div>
+          <div class="profile-stat-card">
+            <div class="profile-stat-icon">🔒</div>
+            <div>
+              <div class="profile-stat-value" style="font-size:14px; font-weight:700; color:#6366f1;">Secure</div>
+              <div class="profile-stat-label">Encrypted Password</div>
+            </div>
+          </div>
         </div>
-        <div id="weatherError" class="msg error"></div>
+
+        <!-- Quick Action Tiles -->
+        <div class="profile-actions-grid">
+          <div class="profile-action-tile" onclick="document.querySelector('[data-tab=\'destinations\']').click()">
+            <div class="profile-action-tile-icon">✈️</div>
+            <strong>Explore Trips</strong>
+            <p>Browse & add destinations to your cart</p>
+            <span class="profile-action-arrow">→</span>
+          </div>
+          <div class="profile-action-tile" onclick="toggleCartDrawer()">
+            <div class="profile-action-tile-icon">🎒</div>
+            <strong>View My Cart</strong>
+            <p>Open your saved trip destinations</p>
+            <span class="profile-action-arrow">→</span>
+          </div>
+          <div class="profile-action-tile" onclick="document.querySelector('[data-tab=\'budget\']').click()">
+            <div class="profile-action-tile-icon">💰</div>
+            <strong>Budget Planner</strong>
+            <p>Estimate costs for your selected trips</p>
+            <span class="profile-action-arrow">→</span>
+          </div>
+          <div class="profile-action-tile" onclick="document.querySelector('[data-tab=\'mapweather\']').click()">
+            <div class="profile-action-tile-icon">🗺️</div>
+            <strong>Map & Weather</strong>
+            <p>Check live conditions at your destination</p>
+            <span class="profile-action-arrow">→</span>
+          </div>
+        </div>
+
+        <!-- Saved Trips Preview -->
+        <div class="profile-saved-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div>
+              <h4 style="margin:0 0 3px; font-size:16px; color:var(--primary); font-weight:800;">🗂️ My Saved Destinations</h4>
+              <p style="margin:0; font-size:12.5px; color:var(--muted);" id="profileCartStatus">Your trip cart is empty — start exploring!</p>
+            </div>
+            <button class="btn small" onclick="syncBudgetFromCart()" style="gap:5px;">📊 Plan Budget</button>
+          </div>
+          <div id="profileSavedList" class="profile-saved-list">
+            <div class="profile-saved-empty">
+              <div style="font-size:36px; margin-bottom:8px;">🧳</div>
+              <p>No destinations saved yet.<br>Click <strong>"+ Add to Trip"</strong> on any destination to get started.</p>
+            </div>
+          </div>
+        </div>
       </div>
+
+    </section>
+
+  </main>
+
+  <!-- 5. SLIDE-OUT TRIP CART DRAWER -->
+  <div class="cart-drawer-overlay" id="cartOverlay" onclick="toggleCartDrawer()"></div>
+  <aside class="cart-drawer" id="cartDrawer">
+    <div class="cart-drawer-header">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:20px;">🎒</span>
+        <h3>My Trip Cart</h3>
+      </div>
+      <button class="btn-close-drawer" onclick="toggleCartDrawer()">✕</button>
     </div>
-  </section>
 
-</main>
+    <div class="cart-items-list" id="cartItemsList">
+      <!-- Items dynamically injected -->
+    </div>
 
-<script src="js/app.js"></script>
+    <div class="cart-drawer-footer">
+      <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+        <span style="font-weight:700; color:var(--muted);">Total Est. Cost:</span>
+        <span style="font-size:18px; font-weight:800; color:var(--primary);" id="cartTotalCost">₹0</span>
+      </div>
+      <button class="btn" style="width:100%;" onclick="proceedToBudgetWithCart()">Plan Budget for Selected Trips →</button>
+    </div>
+  </aside>
+
+  <script src="js/app.js"></script>
 </body>
 </html>
