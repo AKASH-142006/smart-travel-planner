@@ -7,42 +7,71 @@
   <link rel="stylesheet" href="css/style.css">
   <style>
     .auth-page-container {
-      min-height: calc(100vh - 120px);
+      min-height: calc(100vh - 80px);
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+    }
+    .auth-image {
+      flex: none;
+      height: 300px;
+      width: 100%;
+      background: url('https://images.unsplash.com/photo-1526772662000-3f88f10405ff?ixlib=rb-4.0.3&auto=format&fit=crop&w=2560&q=100') center center / cover no-repeat;
+      display: block;
+    }
+    .auth-form-wrapper {
+      flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 30px 16px;
+      padding: 40px 20px;
+    }
+    @media (min-width: 768px) {
+      .auth-page-container {
+        flex-direction: row;
+        align-items: stretch;
+      }
+      .auth-image {
+        flex: 1.2;
+        height: auto;
+        min-height: 100%;
+      }
     }
     .auth-box {
-      max-width: 420px;
+      max-width: 480px;
       width: 100%;
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 32px 28px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      border-radius: 20px;
+      padding: 48px 40px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.1);
     }
     .auth-box h2 {
-      margin: 0 0 8px;
-      font-size: 26px;
+      margin: 0 0 12px;
+      font-size: 32px;
       font-weight: 800;
       color: var(--primary);
     }
+    .auth-box p.subtext {
+      font-size: 16px !important;
+      margin-bottom: 24px !important;
+      line-height: 1.5;
+    }
     .auth-box label {
       display: block;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: var(--muted);
-      margin: 14px 0 6px;
+      margin: 20px 0 8px;
     }
     .auth-box input {
       width: 100%;
-      padding: 12px 14px;
+      padding: 16px;
       border: 1.5px solid var(--border);
-      border-radius: var(--radius-sm);
-      font-size: 15px;
+      border-radius: 10px;
+      font-size: 16px;
       font-family: inherit;
       box-sizing: border-box;
       outline: none;
@@ -53,11 +82,11 @@
       box-shadow: 0 0 0 3px rgba(0, 140, 255, 0.15);
     }
     .auth-box .auth-footer {
-      margin-top: 20px;
-      padding-top: 16px;
+      margin-top: 24px;
+      padding-top: 20px;
       border-top: 1px solid var(--border);
       text-align: center;
-      font-size: 13.5px;
+      font-size: 15px;
       color: var(--muted);
     }
     .auth-box .auth-footer a {
@@ -86,7 +115,9 @@
 </header>
 
 <div class="auth-page-container">
-  <div class="auth-box">
+  <div class="auth-image"></div>
+  <div class="auth-form-wrapper">
+    <div class="auth-box">
     <h2>Welcome Back</h2>
     <p class="subtext" style="color:var(--muted); font-size:14px; margin-bottom:18px;">Log in to access your itinerary, MySQL profile, and budget calculations.</p>
 
@@ -96,17 +127,18 @@
     <label>Password</label>
     <input id="loginPassword" type="password" placeholder="Enter your password">
 
-    <button class="btn" style="width:100%; margin-top:22px; padding:13px; font-size:15px; font-weight:700;" onclick="handleLogin()">Login to Account</button>
+    <button class="btn" style="width:100%; margin-top:28px; padding:16px; font-size:16px; border-radius:10px; font-weight:700;" onclick="handleLogin()">Login to Account</button>
     <div id="loginMsg" class="msg"></div>
 
     <div class="auth-footer">
       Don't have an account? <a href="register.html">Create one here</a>
     </div>
   </div>
+  </div>
 </div>
 
 <script>
-  const API_BASE = 'http://localhost:5000/api';
+  const API_BASE = '/api';
   const SESSION_KEY = "stp_session";
 
   function showMsg(id, text, type) {

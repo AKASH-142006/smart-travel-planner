@@ -6,11 +6,18 @@ Smart Planning for the Modern Traveler — a web-based travel planning demo cove
 
 ```
 smart-travel-planner/
-├── index.html          # Main page (all 4 module tabs)
-├── css/
-│   └── style.css       # All styling
-├── js/
-│   └── app.js          # All application logic
+├── client/             # Browser application served by Express
+│   ├── index.html      # Main page (all 4 module tabs)
+│   ├── login.html
+│   ├── register.html
+│   ├── css/style.css   # All styling
+│   ├── js/app.js       # All client-side logic
+│   └── assets/         # Local destination images
+├── server/             # Private backend application
+│   ├── server.js       # Express API and static file server
+│   └── db.js           # MySQL initialization and connection pool
+├── .env.example        # Environment variable template
+├── package.json
 └── README.md
 ```
 
@@ -25,15 +32,14 @@ smart-travel-planner/
 
 ## How to Run
 
-No build tools or installation required.
+Install dependencies and start the combined client/server deployment:
 
-1. Open `index.html` directly in any modern browser (Chrome, Edge, Firefox), **or**
-2. Serve it locally for full functionality (recommended, since some browsers restrict fetch() on `file://` pages):
-   ```bash
-   cd smart-travel-planner
-   python3 -m http.server 8000
-   ```
-   Then visit `http://localhost:8000` in your browser.
+```bash
+npm install
+npm start
+```
+
+Then visit `http://localhost:5000`. Configure the MySQL connection in `.env` using `.env.example` as a template. The client calls the API through same-origin `/api` routes, so the same setup works locally and in production.
 
 ## APIs Used (both free, no API key required)
 
@@ -42,13 +48,12 @@ No build tools or installation required.
 
 ## Notes for Reviewers
 
-- User data (accounts) is stored in the browser's localStorage for demo purposes — a production version would use a real backend and database.
+- User accounts and saved trips are stored in MySQL through the Express backend. The client retains a localStorage fallback when the API is unavailable.
 - Destination data is currently seeded/static (6 sample destinations) to keep the demo self-contained; a production version would pull from a destinations database or third-party travel API.
 - This covers the 4 modules prioritized for the first project review. Remaining modules (Itinerary Generator, Hotel/Transport Search, Reviews, Notifications) are tracked in the Jira backlog for upcoming sprints.
 
 ## Next Steps (Post-Review)
 
-- Connect a real backend (Node.js/Express or Firebase) for persistent user accounts and trip data
 - Build the Itinerary Generator module (auto-generate day-by-day plans)
 - Add Hotel and Transportation search
 - Add Reviews & Ratings and Notifications modules

@@ -4,7 +4,7 @@
   "description": "Smart Planning for the Modern Traveler — a web-based travel planning demo covering 4 core modules.",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node server/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -16,6 +16,7 @@
     "cors": "^2.8.6",
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
-    "mysql2": "^3.24.4"
+    "mysql2": "^3.24.4",
+    "nodemailer": "^10.1.1"
   }
 }

@@ -1153,18 +1153,43 @@ body {
 /* ---------------- MAP & WEATHER ---------------- */
 .map-weather-container {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.4fr 1fr;
   gap: 20px;
+}
+.map-column {
+  background: white;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+.map-column-header {
+  padding: 10px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+}
+.map-zoom-hint {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
 }
 #leafletMap {
   width: 100%;
-  height: 380px;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  height: 430px;
+  min-height: 380px;
+  z-index: 1;
+  background: #e2e8f0;
 }
 .poi-legend-container {
-  margin-top: 14px;
+  padding: 8px 12px;
 }
 .poi-legend-container:empty {
   display: none;
@@ -1496,3 +1521,334 @@ body {
   box-shadow: 0 4px 12px rgba(99,102,241,0.12);
 }
 
+/* ---------------- BOOKING MODAL ---------------- */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  z-index: 1050;
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.3s ease;
+}
+.modal-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.modal-card {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  background: white;
+  z-index: 1051;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 90%;
+  max-width: 450px;
+  box-shadow: var(--shadow-lg);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-card.hidden {
+  transform: translate(-50%, -50%) scale(0.95);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ─── Booking Flow Progress Stepper ─── */
+.booking-progress {
+  width: 100%;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.booking-progress-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 650px;
+  margin: 0 auto;
+}
+.booking-progress .step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+}
+.booking-progress .step-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  border: 2px solid #cbd5e1;
+  transition: all 0.25s ease;
+}
+.booking-progress .step.active .step-circle {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(224, 86, 56, 0.2);
+}
+.booking-progress .step.done .step-circle {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+}
+.booking-progress .step-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+.booking-progress .step.active .step-label {
+  color: var(--accent);
+}
+.booking-progress .step.done .step-label {
+  color: #10b981;
+}
+.booking-progress .step-connector {
+  flex: 1;
+  height: 3px;
+  background: #e2e8f0;
+  margin: 0 10px -18px 10px;
+  transition: background 0.3s;
+}
+.booking-progress .step-connector.done {
+  background: #10b981;
+}
+
+/* ─── Trip Selection Banner in Budget Tracker ─── */
+.trip-summary-banner {
+  background: linear-gradient(135deg, #0a2540 0%, #1e3a8a 100%);
+  color: white;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 28px;
+  box-shadow: 0 10px 25px -5px rgba(10, 37, 64, 0.25);
+}
+.trip-summary-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: -0.3px;
+}
+.trip-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+.trip-summary-item {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.trip-summary-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+.trip-summary-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 700;
+}
+.trip-summary-value {
+  font-size: 16px;
+  font-weight: 800;
+  color: white;
+  margin-top: 2px;
+}
+.trip-summary-sub {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.75);
+  margin-top: 2px;
+}
+
+/* ─── Transport Cards ─── */
+.transport-card {
+  position: relative;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+.transport-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.08);
+}
+.transport-card.selected {
+  border: 2px solid var(--accent) !important;
+}
+.transport-selected-badge {
+  display: none;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: var(--accent);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  z-index: 5;
+}
+.transport-card.selected .transport-selected-badge {
+  display: block;
+}
+
+/* ─── Trip Official Receipt ─── */
+.trip-receipt {
+  max-width: 620px;
+  margin: 0 auto;
+  background: white;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 20px 40px -10px rgba(0,0,0,0.1);
+  position: relative;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.receipt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px dashed #e2e8f0;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+}
+.receipt-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.receipt-brand-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--primary);
+}
+.receipt-brand-sub {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+}
+.receipt-no-block {
+  text-align: right;
+}
+.receipt-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.receipt-no {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--primary);
+  font-family: monospace;
+}
+.receipt-date {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.receipt-status-badge {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  text-align: center;
+  padding: 8px 16px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin-bottom: 24px;
+}
+.receipt-section {
+  margin-bottom: 20px;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 16px;
+}
+.receipt-section:last-of-type {
+  border-bottom: none;
+}
+.receipt-section-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #475569;
+  padding: 4px 0;
+}
+.receipt-row strong {
+  color: #0f172a;
+}
+.receipt-total-row {
+  border-top: 2px solid #0f172a;
+  padding-top: 12px;
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 900;
+  color: #0f172a;
+}
+.receipt-total-row span:last-child {
+  color: #10b981;
+}
+.receipt-footer {
+  text-align: center;
+  padding-top: 20px;
+  border-top: 2px dashed #e2e8f0;
+  margin-top: 10px;
+}
+.receipt-upi {
+  display: inline-flex;
+  gap: 8px;
+  background: #f8fafc;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 12px;
+}
+.receipt-thankyou {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+.receipt-note {
+  font-size: 11px;
+  color: var(--muted);
+}

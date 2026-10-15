@@ -1,15 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smart Travel Planner — MakeMyTrip Style Travel Platform</title>
   <link rel="stylesheet" href="css/style.css">
-  <!-- Leaflet.js – free interactive maps, no API key needed -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>">
+  <!-- Leaflet.js – free interactive maps, loaded locally (offline-friendly & instant) -->
+  <link rel="stylesheet" href="css/leaflet.css">
+  <script src="js/leaflet.js"></script>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>">
 </head>
+
 <body>
 
   <!-- 1. TOP NAVBAR -->
@@ -26,13 +29,19 @@
       <!-- Quick Module Tabs -->
       <nav class="nav-links" id="tabNav">
         <button class="nav-tab-btn active" data-tab="destinations">
-          <span>✈️</span> Explore Trips
+          <span>✈️</span> 1. Destination
         </button>
-        <button class="nav-tab-btn" data-tab="budget">
-          <span>💰</span> Budget Planner
+        <button class="nav-tab-btn" data-tab="hotels">
+          <span>🏨</span> 2. Hotels
+        </button>
+        <button class="nav-tab-btn" data-tab="transport">
+          <span>🚗</span> 3. Transport
         </button>
         <button class="nav-tab-btn" data-tab="mapweather">
-          <span>🗺️</span> Map & Weather
+          <span>🗺️</span> 4. Map &amp; Weather
+        </button>
+        <button class="nav-tab-btn" data-tab="budget">
+          <span>💰</span> 5. Budget &amp; Book
         </button>
         <button class="nav-tab-btn" data-tab="auth">
           <span>👤</span> Account
@@ -47,15 +56,20 @@
         </button>
 
         <div id="headerAuthActions" style="display:flex; align-items:center; gap:8px;">
+          <a href="admin.html" class="btn small"
+            style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);">🛡️
+            Admin Portal</a>
           <a href="login.html" id="headerLoginBtn" class="btn secondary small">Login</a>
           <a href="register.html" id="headerRegisterBtn" class="btn accent small">Sign Up</a>
-          
+
           <div id="headerUserView" class="hidden" style="display:flex; align-items:center; gap:10px;">
-            <div style="display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.12); padding:4px 12px; border-radius:20px;">
+            <div
+              style="display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.12); padding:4px 12px; border-radius:20px;">
               <span style="width:8px; height:8px; border-radius:50%; background:#10b981;"></span>
               <span id="headerUserName" style="font-size:13px; font-weight:700; color:white;">Akash</span>
             </div>
-            <button class="btn secondary small" style="background:rgba(255,255,255,0.15); color:white; border:none;" onclick="logoutUser()">Logout</button>
+            <button class="btn secondary small" style="background:rgba(255,255,255,0.15); color:white; border:none;"
+              onclick="logoutUser()">Logout</button>
           </div>
         </div>
       </div>
@@ -67,7 +81,8 @@
     <div class="hero-headline">
       <div class="hero-pill">✨ Handcrafted Holiday Packages & Real-Time Itineraries</div>
       <h2 class="hero-title">Where would you like to <span>travel next?</span></h2>
-      <p class="hero-subtitle">Discover India's top trending beach getaways, majestic snow peaks, royal palaces, and serene backwaters with smart budget estimation.</p>
+      <p class="hero-subtitle">Discover India's top trending beach getaways, majestic snow peaks, royal palaces, and
+        serene backwaters with smart budget estimation.</p>
     </div>
   </section>
 
@@ -76,7 +91,8 @@
     <div class="widget-grid">
       <div class="widget-field">
         <span class="widget-label">Destination / Keyword</span>
-        <input id="destSearch" type="text" placeholder="e.g. Goa, Manali, Jaipur, Beach..." oninput="filterDestinations()">
+        <input id="destSearch" type="text" placeholder="e.g. Goa, Manali, Jaipur, Beach..."
+          oninput="filterDestinations()">
       </div>
       <div class="widget-field">
         <span class="widget-label">Ideal Season</span>
@@ -117,7 +133,12 @@
           <h2>Trending Destinations in India</h2>
           <p>Curated holiday destinations with live weather, top attractions, and budget estimates</p>
         </div>
-        <div id="resultsCount" style="font-size:13px; font-weight:700; color:var(--muted);">12 destinations found</div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <button class="btn accent" style="padding: 10px 16px; font-size: 14px;" onclick="openPlanTripModal()">✨ Plan
+            My Complete Trip</button>
+          <div id="resultsCount" style="font-size:13px; font-weight:700; color:var(--muted);">12 destinations found
+          </div>
+        </div>
       </div>
 
       <!-- Destination Cards Grid -->
@@ -130,6 +151,18 @@
           <div id="detailActionSlot"></div>
         </div>
         <div id="destDetailBody"></div>
+      </div>
+
+      <!-- Planner Itinerary View -->
+      <div class="detail-card hidden" id="plannerItineraryCard">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <button class="btn secondary small" onclick="closePlanner()">← Back</button>
+          <div style="display:flex; gap:8px;">
+            <button class="btn secondary small" onclick="openPlanTripModal()">✏️ Edit Preferences</button>
+            <button class="btn accent small" onclick="saveItineraryToBudget()">💰 Send to Budget</button>
+          </div>
+        </div>
+        <div id="plannerItineraryBody"></div>
       </div>
     </section>
 
@@ -154,7 +187,7 @@
             <h3 id="spendLabel" style="color:#60a5fa;">₹0</h3>
           </div>
           <div class="budget-summary-item">
-            <p>Remaining Balance</p>
+            <p id="balanceText">Remaining Balance</p>
             <h3 id="balanceLabel" style="color:#34d399;">₹0</h3>
           </div>
         </div>
@@ -171,8 +204,11 @@
         </div>
 
         <div style="margin:24px 0 10px;">
-          <label style="font-weight:700; font-size:13px; color:var(--primary); margin-bottom:8px; display:block;">1. Set Target Trip Budget (₹)</label>
-          <input id="totalBudget" type="number" placeholder="e.g. 35000" style="width:100%; max-width:320px; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px; font-size:16px; font-weight:700;" oninput="updateBudget()">
+          <label style="font-weight:700; font-size:13px; color:var(--primary); margin-bottom:8px; display:block;">1. Set
+            Target Trip Budget (₹)</label>
+          <input id="totalBudget" type="number" placeholder="e.g. 35000"
+            style="width:100%; max-width:320px; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px; font-size:16px; font-weight:700;"
+            oninput="updateBudget()">
         </div>
 
         <h4 style="margin:20px 0 10px; font-size:15px; color:var(--primary);">2. Category-wise Breakdown (₹)</h4>
@@ -184,10 +220,6 @@
           <div class="expense-input-card">
             <label>🚗 Transport & Flights</label>
             <input id="expTransport" type="number" placeholder="6000" oninput="updateBudget()">
-          </div>
-          <div class="expense-input-card">
-            <label>🍽️ Food & Dining</label>
-            <input id="expFood" type="number" placeholder="4000" oninput="updateBudget()">
           </div>
           <div class="expense-input-card">
             <label>🎟️ Activities & Entry</label>
@@ -206,6 +238,78 @@
           </thead>
           <tbody id="budgetTableBody"></tbody>
         </table>
+
+        <div id="paymentMethodIndicator" class="hidden"
+          style="margin-top: 20px; padding: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #166534; font-size: 14px; text-align: center;">
+          <span style="font-weight: 700;">💳 Recommended Payment Method:</span> Secure UPI / Net Banking (No extra fees)
+        </div>
+
+        <div id="budgetConfirmBtnContainer" class="hidden"
+          style="margin-top: 30px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px;">
+          <button class="btn accent"
+            style="padding: 16px 36px; font-size: 18px; width: 100%; max-width: 440px; font-weight: 800; box-shadow: 0 4px 15px rgba(224, 86, 56, 0.35);"
+            onclick="confirmAndPayTrip()">
+            💳 Confirm Trip &amp; Proceed to Payment
+          </button>
+          <button class="btn"
+            style="padding: 12px 24px; font-size: 14px; width: 100%; max-width: 440px; background: white; border: 1.5px solid #10b981; color: #10b981; font-weight: 700; cursor: pointer;"
+            onclick="generateTripReceipt()">
+            🧾 Generate Receipt Directly (Demo)
+          </button>
+        </div>
+
+        <!-- TRIP RECEIPT — generated after payment confirmation -->
+        <div id="tripReceiptContainer" class="hidden" style="margin-top: 40px;"></div>
+      </div>
+    </section>
+
+    <!-- MODULE 6: TRANSPORT -->
+    <section id="transport" class="panel">
+      <div class="budget-dashboard">
+        <div class="section-header">
+          <div>
+            <h2>Select Transport</h2>
+            <p>Choose your preferred mode of travel to and around the destination</p>
+          </div>
+        </div>
+        <div class="dest-grid" id="transportList"></div>
+      </div>
+    </section>
+
+    <!-- MODULE 5: HOTELS -->
+    <section id="hotels" class="panel">
+      <div class="budget-dashboard">
+        <div class="section-header">
+          <div>
+            <h2>Search Hotels</h2>
+            <p>Find and book the best hotels for your stay</p>
+          </div>
+        </div>
+        <div class="booking-widget-card" style="margin-top: 0; box-shadow: none; padding: 20px 0;">
+          <div class="widget-grid">
+            <div class="widget-field">
+              <span class="widget-label">Destination</span>
+              <input id="hotelDestSearch" type="text" placeholder="e.g. Goa, Manali..." oninput="filterHotels()">
+            </div>
+            <div class="widget-field">
+              <span class="widget-label">Check-in Date</span>
+              <input id="hotelCheckIn" type="date" onchange="filterHotels()">
+            </div>
+            <div class="widget-field">
+              <span class="widget-label">Check-out Date</span>
+              <input id="hotelCheckOut" type="date" onchange="filterHotels()">
+            </div>
+            <button class="widget-btn-search" onclick="filterHotels()">
+              <span>🔍 Search Hotels</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section-header" style="margin-top: 24px;">
+          <div id="hotelResultsCount" style="font-size:13px; font-weight:700; color:var(--muted);">0 hotels found</div>
+        </div>
+
+        <div class="dest-grid" id="hotelList"></div>
       </div>
     </section>
 
@@ -242,7 +346,8 @@
 
           <!-- RIGHT: Weather -->
           <div class="weather-card">
-            <h4 style="margin:0 0 16px; color:var(--primary); font-size:15px; font-weight:800;">☀️ Live Weather Conditions</h4>
+            <h4 style="margin:0 0 16px; color:var(--primary); font-size:15px; font-weight:800;">☀️ Live Weather
+              Conditions</h4>
             <div id="weatherLoading" class="subtext" style="padding:20px 0;">Fetching live satellite weather...</div>
             <div id="weatherContent" class="hidden">
               <div class="weather-main-row">
@@ -252,7 +357,9 @@
                   <div class="subtext" id="wWind" style="margin:6px 0 0;">Wind: -- km/h</div>
                 </div>
               </div>
-              <h5 style="margin:22px 0 10px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">4-Day Forecast</h5>
+              <h5
+                style="margin:22px 0 10px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">
+                4-Day Forecast</h5>
               <div id="wForecast" class="weather-days"></div>
             </div>
             <div id="weatherError" class="msg error"></div>
@@ -262,7 +369,8 @@
               <div class="dest-info-body">
                 <h4 id="destInfoName">--</h4>
                 <div id="destInfoMeta"></div>
-                <button class="btn small" style="margin-top:10px; width:100%;" onclick="addCurrentMapDestToCart()">🎒 Add to Trip Cart</button>
+                <button class="btn small" style="margin-top:10px; width:100%;" onclick="addCurrentMapDestToCart()">🎒
+                  Add to Trip Cart</button>
               </div>
             </div>
           </div>
@@ -284,7 +392,8 @@
               <span id="placesPanelCount" class="places-count-badge">0 places</span>
             </div>
             <div id="placesList" class="places-list-scroll">
-              <div class="places-empty">🌍 Select a destination above to see all tourist places, hotels &amp; attractions on the map.</div>
+              <div class="places-empty">🌍 Select a destination above to see all tourist places, hotels &amp;
+                attractions on the map.</div>
             </div>
           </div>
 
@@ -293,23 +402,24 @@
             <div class="route-finder-header">
               <div>
                 <div style="font-weight:800;font-size:14px;color:#0a2540;">🧭 Travel Route from My Location</div>
-                <div style="font-size:11px;color:#64748b;margin-top:2px;">Get estimated travel time &amp; see the route on map</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px;">Get estimated travel time &amp; see the route
+                  on map</div>
               </div>
             </div>
 
             <!-- Transport Mode Tabs -->
             <div class="route-mode-tabs">
-              <button class="route-mode-tab active" id="routeTab-car"   onclick="showRouteForMode('car')">
+              <button class="route-mode-tab active" id="routeTab-car" onclick="showRouteForMode('car')">
                 <span class="route-tab-icon">🚗</span>
                 <span class="route-tab-label">Car</span>
                 <span class="route-tab-time" id="routeTime-car">--</span>
               </button>
-              <button class="route-mode-tab" id="routeTab-bike"  onclick="showRouteForMode('bike')">
+              <button class="route-mode-tab" id="routeTab-bike" onclick="showRouteForMode('bike')">
                 <span class="route-tab-icon">🏍️</span>
                 <span class="route-tab-label">Bike</span>
                 <span class="route-tab-time" id="routeTime-bike">--</span>
               </button>
-              <button class="route-mode-tab" id="routeTab-bus"   onclick="showRouteForMode('bus')">
+              <button class="route-mode-tab" id="routeTab-bus" onclick="showRouteForMode('bus')">
                 <span class="route-tab-icon">🚌</span>
                 <span class="route-tab-label">Bus</span>
                 <span class="route-tab-time" id="routeTime-bus">--</span>
@@ -345,10 +455,14 @@
           <div class="account-hero-content">
             <div class="account-hero-badge">✈️ Your Travel Dashboard</div>
             <h2>Plan smarter.<br>Travel better.</h2>
-            <p>Create a free account to save your dream destinations, track your budget, and build a personalised trip itinerary — all in one place.</p>
+            <p>Create a free account to save your dream destinations, track your budget, and build a personalised trip
+              itinerary — all in one place.</p>
             <div class="account-hero-actions">
-              <a href="login.html" class="btn" id="accountLoginBtn" style="padding:13px 32px; font-size:15px; font-weight:700; box-shadow:0 6px 20px rgba(0,140,255,0.35);">🔑 Log In</a>
-              <a href="register.html" class="btn account-signup-btn" id="accountSignupBtn" style="padding:13px 32px; font-size:15px; font-weight:700;">🚀 Create Free Account</a>
+              <a href="login.html" class="btn" id="accountLoginBtn"
+                style="padding:13px 32px; font-size:15px; font-weight:700; box-shadow:0 6px 20px rgba(0,140,255,0.35);">🔑
+                Log In</a>
+              <a href="register.html" class="btn account-signup-btn" id="accountSignupBtn"
+                style="padding:13px 32px; font-size:15px; font-weight:700;">🚀 Create Free Account</a>
             </div>
           </div>
           <div class="account-hero-features">
@@ -466,15 +580,18 @@
         <div class="profile-saved-section">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <div>
-              <h4 style="margin:0 0 3px; font-size:16px; color:var(--primary); font-weight:800;">🗂️ My Saved Destinations</h4>
-              <p style="margin:0; font-size:12.5px; color:var(--muted);" id="profileCartStatus">Your trip cart is empty — start exploring!</p>
+              <h4 style="margin:0 0 3px; font-size:16px; color:var(--primary); font-weight:800;">🗂️ My Saved
+                Destinations</h4>
+              <p style="margin:0; font-size:12.5px; color:var(--muted);" id="profileCartStatus">Your trip cart is empty
+                — start exploring!</p>
             </div>
             <button class="btn small" onclick="syncBudgetFromCart()" style="gap:5px;">📊 Plan Budget</button>
           </div>
           <div id="profileSavedList" class="profile-saved-list">
             <div class="profile-saved-empty">
               <div style="font-size:36px; margin-bottom:8px;">🧳</div>
-              <p>No destinations saved yet.<br>Click <strong>"+ Add to Trip"</strong> on any destination to get started.</p>
+              <p>No destinations saved yet.<br>Click <strong>"+ Add to Trip"</strong> on any destination to get started.
+              </p>
             </div>
           </div>
         </div>
@@ -504,10 +621,143 @@
         <span style="font-weight:700; color:var(--muted);">Total Est. Cost:</span>
         <span style="font-size:18px; font-weight:800; color:var(--primary);" id="cartTotalCost">₹0</span>
       </div>
-      <button class="btn" style="width:100%;" onclick="proceedToBudgetWithCart()">Plan Budget for Selected Trips →</button>
+      <button class="btn" style="width:100%; margin-bottom:8px;" onclick="proceedToBudgetWithCart()">Plan Budget for
+        Selected Trips →</button>
+      <button class="btn accent" style="width:100%;" onclick="openBookingModal()">Book Now →</button>
     </div>
   </aside>
 
-  <script src="js/app.js"></script>
+  <!-- 6. BOOKING & PAYMENT MODAL -->
+  <div class="modal-overlay hidden" id="bookingModalOverlay" onclick="closeBookingModal()"></div>
+  <div class="modal-card hidden" id="bookingModal">
+    <div class="modal-header"
+      style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:12px; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:18px;">Complete Your Booking</h3>
+      <button class="btn-close-modal" onclick="closeBookingModal()"
+        style="background:none; border:none; font-size:20px; cursor:pointer;">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="bookingForm" onsubmit="handleBookingSubmit(event)">
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Full Name *</label>
+          <input type="text" id="bookName" required
+            style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Email Address * (For
+            Notifications &amp; Vouchers)</label>
+          <input type="email" id="bookEmail" required placeholder="e.g. yourname@example.com"
+            style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Phone Number *</label>
+          <input type="tel" id="bookPhone" required
+            style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Address</label>
+          <textarea id="bookAddress" rows="3" required
+            style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; resize:vertical;"></textarea>
+        </div>
+
+        <div class="payment-section"
+          style="background:#f8fafc; padding:16px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:16px; text-align:center;">
+          <h4 style="margin:0 0 12px; font-size:15px; color:#0f172a;">Scan to Pay via UPI Circle</h4>
+          <div
+            style="background:white; padding:12px; display:inline-block; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <img
+              src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=akashakas723@okaxis%26pn=Akash%20Akas"
+              alt="UPI QR Code" style="width:150px; height:150px;">
+          </div>
+          <p style="margin:12px 0 0; font-size:14px; font-weight:700; color:#334155;">UPI ID: akashakas723@okaxis</p>
+          <p style="margin:4px 0 0; font-size:12px; color:#64748b;">(Google Pay, PhonePe, Paytm)</p>
+        </div>
+
+        <button type="submit" class="btn accent"
+          style="width:100%; padding:12px; font-size:16px; font-weight:700;">Confirm Booking</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 7. PLAN TRIP PREFERENCES MODAL -->
+  <div class="modal-overlay hidden" id="planTripModalOverlay" onclick="closePlanTripModal()"></div>
+  <div class="modal-card hidden" id="planTripModal" style="max-width: 600px; width: 95%;">
+    <div class="modal-header"
+      style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:12px; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:18px;">✨ Plan My Complete Trip</h3>
+      <button class="btn-close-modal" onclick="closePlanTripModal()"
+        style="background:none; border:none; font-size:20px; cursor:pointer;">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="planTripForm" onsubmit="generateItinerary(event)">
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Destination</label>
+          <select id="ptDest" required
+            style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;"></select>
+        </div>
+        <div style="display:flex; gap:12px; margin-bottom:12px;">
+          <div style="flex:1;">
+            <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Start Date</label>
+            <input type="date" id="ptStartDate" required
+              style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+          </div>
+          <div style="flex:1;">
+            <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Trip Duration
+              (Days)</label>
+            <input type="number" id="ptDays" required min="1" max="14" value="3"
+              style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+          </div>
+        </div>
+        <div style="display:flex; gap:12px; margin-bottom:12px;">
+          <div style="flex:1;">
+            <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Travellers</label>
+            <input type="number" id="ptTravellers" required min="1" value="2"
+              style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+          </div>
+          <div style="flex:1;">
+            <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Total Trip Budget
+              (₹)</label>
+            <input type="number" id="ptBudget" required placeholder="e.g. 15000"
+              style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Interests (Select
+            multiple)</label>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;" id="ptInterests">
+            <label><input type="checkbox" value="beach"> Beach</label>
+            <label><input type="checkbox" value="nature"> Nature</label>
+            <label><input type="checkbox" value="heritage,fort,temple"> Heritage/Culture</label>
+            <label><input type="checkbox" value="adventure"> Adventure</label>
+            <label><input type="checkbox" value="market"> Shopping/Food</label>
+          </div>
+        </div>
+        <div style="display:flex; gap:12px; margin-bottom:16px;">
+          <div style="flex:1;">
+            <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Travel Group</label>
+            <select id="ptGroup" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+              <option value="solo">Solo</option>
+              <option value="couple" selected>Couple</option>
+              <option value="family">Family</option>
+              <option value="friends">Friends</option>
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="display:block; font-size:13px; font-weight:700; margin-bottom:4px;">Pace / Style</label>
+            <select id="ptStyle" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+              <option value="relaxed">Relaxed (1-2 places/day)</option>
+              <option value="balanced" selected>Balanced (3-4 places/day)</option>
+              <option value="packed">Packed (5+ places/day)</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn accent"
+          style="width:100%; padding:12px; font-size:16px; font-weight:700;">Generate Itinerary</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/app.js?v=2"></script>
 </body>
+
 </html>

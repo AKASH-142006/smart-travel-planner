@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Portal — Smart Travel Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    :root {
+      --admin-bg: #f8fafc;
+      --admin-card: #ffffff;
+      --admin-primary: #0a2540;
+      --admin-accent: #e05638;
+      --admin-border: #e2e8f0;
+      --admin-success: #10b981;
+      --admin-warning: #f59e0b;
+      --admin-danger: #ef4444;
+    }
+
+    body {
+      background-color: var(--admin-bg);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      margin: 0;
+      padding: 0;
+      color: #1e293b;
+    }
+
+    /* Admin Navigation */
+    .admin-navbar {
+      background: var(--admin-primary);
+      color: white;
+      padding: 14px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 20px rgba(10, 37, 64, 0.15);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+    .admin-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+    }
+    .admin-badge {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .admin-nav-links {
+      display: flex;
+      gap: 8px;
+    }
+    .admin-nav-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.75);
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .admin-nav-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+    .admin-nav-btn.active {
+      background: rgba(255, 255, 255, 0.18);
+      color: white;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    }
+    .admin-exit-btn {
+      background: rgba(255, 255, 255, 0.12);
+      color: white;
+      text-decoration: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+    .admin-exit-btn:hover {
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    /* Container & Layout */
+    .admin-container {
+      max-width: 1320px;
+      margin: 30px auto 60px;
+      padding: 0 24px;
+    }
+
+    .admin-tab-content {
+      display: none;
+    }
+    .admin-tab-content.active {
+      display: block;
+      animation: fadeIn 0.25s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Metric Cards */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+    .metric-card {
+      background: var(--admin-card);
+      border: 1px solid var(--admin-border);
+      border-radius: 16px;
+      padding: 22px 24px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: #cbd5e1;
+    }
+    .metric-card.accent-blue::before { background: #3b82f6; }
+    .metric-card.accent-amber::before { background: #f59e0b; }
+    .metric-card.accent-emerald::before { background: #10b981; }
+    .metric-card.accent-indigo::before { background: #6366f1; }
+
+    .metric-label {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .metric-value {
+      font-size: 32px;
+      font-weight: 900;
+      color: #0f172a;
+      line-height: 1.1;
+    }
+    .metric-sub {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+
+    /* Section Header */
+    .section-title-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .section-title-bar h2 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0;
+    }
+
+    /* Tables */
+    .admin-card-box {
+      background: var(--admin-card);
+      border: 1px solid var(--admin-border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+      margin-bottom: 30px;
+    }
+    .table-responsive {
+      overflow-x: auto;
+    }
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      text-align: left;
+    }
+    .admin-table th {
+      background: #f8fafc;
+      padding: 14px 16px;
+      font-weight: 800;
+      color: #475569;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      border-bottom: 1.5px solid var(--admin-border);
+    }
+    .admin-table td {
+      padding: 16px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
+    .admin-table tr:hover td {
+      background: #fafbfc;
+    }
+
+    /* Status Badges */
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .badge-status.pending {
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+    .badge-status.approved {
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+    .badge-status.rejected {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    /* Action Buttons */
+    .btn-action {
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+    .btn-approve {
+      background: #10b981;
+      color: white;
+    }
+    .btn-approve:hover {
+      background: #059669;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 10px rgba(16, 185, 129, 0.25);
+    }
+    .btn-reject {
+      background: #fee2e2;
+      color: #ef4444;
+    }
+    .btn-reject:hover {
+      background: #fecaca;
+    }
+    .btn-mail {
+      background: #e0f2fe;
+      color: #0284c7;
+    }
+    .btn-mail:hover {
+      background: #bae6fd;
+    }
+
+    /* Form Styles */
+    .admin-form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid var(--admin-border);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      box-sizing: border-box;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    /* Filter Bar */
+    .filter-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .filter-search-input {
+      flex: 1;
+      min-width: 250px;
+      padding: 10px 14px;
+      border: 1.5px solid var(--admin-border);
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-family: inherit;
+    }
+    .filter-select {
+      padding: 10px 14px;
+      border: 1.5px solid var(--admin-border);
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-family: inherit;
+      background: white;
+    }
+
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .toast {
+      background: #0f172a;
+      color: white;
+      padding: 14px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: slideIn 0.3s ease;
+    }
+    .toast.success { background: #065f46; border-left: 5px solid #10b981; }
+    .toast.error { background: #991b1b; border-left: 5px solid #ef4444; }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ADMIN NAVBAR -->
+  <header class="admin-navbar">
+    <div class="admin-brand">
+      <span style="font-size: 24px;">🧭</span>
+      <span>Smart Travel Planner</span>
+      <span class="admin-badge">Admin Control Center</span>
+    </div>
+    
+    <nav class="admin-nav-links">
+      <button class="admin-nav-btn active" data-tab="approvals" onclick="switchAdminTab('approvals')">
+        <span>📋</span> Trip Approvals <span id="pendingNavBadge" style="background:#ef4444; color:white; font-size:10px; padding:2px 6px; border-radius:10px; margin-left:4px;">0</span>
+      </button>
+      <button class="admin-nav-btn" data-tab="add-trip" onclick="switchAdminTab('add-trip')">
+        <span>➕</span> Add New Packages
+      </button>
+      <button class="admin-nav-btn" data-tab="manage-cart" onclick="switchAdminTab('manage-cart')">
+        <span>🎒</span> Customer Carts
+      </button>
+      <button class="admin-nav-btn" data-tab="emails" onclick="switchAdminTab('emails')">
+        <span>📨</span> Email Notifications
+      </button>
+    </nav>
+
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <a href="index.html" class="admin-exit-btn">
+        <span>🌍</span> View Customer Site
+      </a>
+    </div>
+  </header>
+
+  <div class="admin-container">
+
+    <!-- METRICS OVERVIEW -->
+    <div class="metrics-grid">
+      <div class="metric-card accent-blue">
+        <span class="metric-label">Total Bookings</span>
+        <div class="metric-value" id="statTotalBookings">0</div>
+        <span class="metric-sub">Customer trip plans submitted</span>
+      </div>
+      <div class="metric-card accent-amber">
+        <span class="metric-label">Pending Approvals</span>
+        <div class="metric-value" id="statPendingBookings" style="color:#d97706;">0</div>
+        <span class="metric-sub">Awaiting admin confirmation</span>
+      </div>
+      <div class="metric-card accent-emerald">
+        <span class="metric-label">Approved Trips</span>
+        <div class="metric-value" id="statApprovedBookings" style="color:#10b981;">0</div>
+        <span class="metric-sub">Verified & email dispatched</span>
+      </div>
+      <div class="metric-card accent-indigo">
+        <span class="metric-label">Total Revenue</span>
+        <div class="metric-value" id="statTotalRevenue">₹0</div>
+        <span class="metric-sub">Paid bookings volume</span>
+      </div>
+    </div>
+
+    <!-- ─── TAB 1: TRIP APPROVALS ─── -->
+    <section id="tab-approvals" class="admin-tab-content active">
+      <div class="section-title-bar">
+        <div>
+          <h2>Customer Trips &amp; Approval Requests</h2>
+          <p style="margin: 4px 0 0; color: #64748b; font-size: 13.5px;">Review customer planned itineraries, approve trips, and automatically notify customers via email.</p>
+        </div>
+        <button class="btn-action btn-approve" style="padding: 10px 18px; font-size: 13.5px;" onclick="fetchAdminBookings()">
+          🔄 Refresh Bookings
+        </button>
+      </div>
+
+      <div class="filter-bar">
+        <input type="text" id="bookingSearchInput" class="filter-search-input" placeholder="🔍 Search by customer name, email, phone, or destination..." oninput="filterBookingsTable()">
+        <select id="bookingStatusFilter" class="filter-select" onchange="filterBookingsTable()">
+          <option value="all">All Statuses</option>
+          <option value="Pending" selected>Pending Review</option>
+          <option value="Approved">Approved</option>
+          <option value="Rejected">Rejected</option>
+        </select>
+      </div>
+
+      <div class="admin-card-box" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Receipt / Date</th>
+                <th>Customer</th>
+                <th>Destination</th>
+                <th>Hotel &amp; Transport</th>
+                <th>Total Cost</th>
+                <th>Status</th>
+                <th>Email Status</th>
+                <th style="text-align: right;">Admin Action</th>
+              </tr>
+            </thead>
+            <tbody id="bookingsTableBody">
+              <tr>
+                <td colspan="8" style="text-align: center; padding: 40px; color: #94a3b8;">
+                  Loading customer bookings...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── TAB 2: ADD NEW TRIP PACKAGES ─── -->
+    <section id="tab-add-trip" class="admin-tab-content">
+      <div class="section-title-bar">
+        <div>
+          <h2>Add New Trip Packages &amp; Destinations</h2>
+          <p style="margin: 4px 0 0; color: #64748b; font-size: 13.5px;">Create and publish brand new destinations and holiday packages directly to the customer website.</p>
+        </div>
+      </div>
+
+      <div class="admin-card-box">
+        <form id="addDestinationForm" onsubmit="handleCreateDestination(event)">
+          <div class="admin-form-grid">
+            <div class="form-group">
+              <label>Destination Name *</label>
+              <input type="text" id="newDestName" required placeholder="e.g. Ooty, Kashmir, Varanasi, Coorg">
+            </div>
+            <div class="form-group">
+              <label>Category *</label>
+              <select id="newDestCategory" required>
+                <option value="Beach">Beach</option>
+                <option value="Mountain">Mountain / Hill Station</option>
+                <option value="Heritage">Heritage / Cultural</option>
+                <option value="Nature">Nature / Wildlife</option>
+                <option value="Adventure">Adventure</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Best Season to Visit *</label>
+              <input type="text" id="newDestSeason" required placeholder="e.g. Oct - Mar, Apr - Jun">
+            </div>
+            <div class="form-group">
+              <label>Starting Package Price (₹) *</label>
+              <input type="number" id="newDestPrice" required min="500" placeholder="e.g. 9500">
+            </div>
+            <div class="form-group">
+              <label>Duration *</label>
+              <input type="text" id="newDestDuration" required placeholder="e.g. 4 Days / 3 Nights">
+            </div>
+            <div class="form-group">
+              <label>Image URL or Asset Path</label>
+              <input type="text" id="newDestImg" placeholder="assets/goa.jpg or https://images.unsplash.com/..." value="assets/goa.jpg">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Key Attractions / Highlights (comma separated)</label>
+            <input type="text" id="newDestAttractions" placeholder="e.g. Botanical Gardens, Ooty Lake, Pykara Waterfalls, Nilgiri Mountain Railway">
+          </div>
+
+          <div class="form-group">
+            <label>Trip Description *</label>
+            <textarea id="newDestDesc" rows="3" required placeholder="Describe the holiday experience, landscapes, local food, and sights..."></textarea>
+          </div>
+
+          <div style="text-align: right; margin-top: 10px;">
+            <button type="submit" class="btn-action btn-approve" style="padding: 12px 28px; font-size: 14px;">
+              🚀 Publish Trip Package to Website
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Published Custom Packages List -->
+      <div class="section-title-bar" style="margin-top: 40px;">
+        <h3>Published Custom Destinations</h3>
+      </div>
+      <div class="admin-card-box" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Destination</th>
+                <th>Category</th>
+                <th>Season</th>
+                <th>Duration</th>
+                <th>Price</th>
+                <th>Published At</th>
+                <th style="text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="customDestTableBody">
+              <tr>
+                <td colspan="7" style="text-align: center; padding: 30px; color: #94a3b8;">
+                  No custom trip packages added yet.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── TAB 3: CUSTOMER CART MANAGEMENT ─── -->
+    <section id="tab-manage-cart" class="admin-tab-content">
+      <div class="section-title-bar">
+        <div>
+          <h2>Customer Cart &amp; Itinerary Management</h2>
+          <p style="margin: 4px 0 0; color: #64748b; font-size: 13.5px;">Assign and push promotional or custom holiday packages directly into a customer's personal trip cart.</p>
+        </div>
+      </div>
+
+      <div class="admin-card-box">
+        <h3 style="margin-top: 0; font-size: 16px;">🎁 Push Package to Customer's Cart</h3>
+        <form id="assignCartForm" onsubmit="handleAssignCart(event)">
+          <div class="admin-form-grid">
+            <div class="form-group">
+              <label>Select Customer *</label>
+              <select id="assignUserSelect" required>
+                <option value="">Loading registered users...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Trip / Destination *</label>
+              <input type="text" id="assignDestName" required placeholder="e.g. VIP Goa Experience, Ladakh Expedition">
+            </div>
+            <div class="form-group">
+              <label>Special Offer Price (₹) *</label>
+              <input type="number" id="assignDestPrice" required placeholder="e.g. 7499">
+            </div>
+            <div class="form-group">
+              <label>Trip Duration</label>
+              <input type="text" id="assignDestDuration" value="4 Days / 3 Nights">
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <button type="submit" class="btn-action btn-approve" style="padding: 10px 24px; font-size: 14px;">
+              🎒 Add Directly to Customer's Cart
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div class="section-title-bar" style="margin-top: 30px;">
+        <h3>Registered Customers &amp; Active Cart Contents</h3>
+      </div>
+      <div class="admin-card-box" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Customer ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Active Cart Items</th>
+                <th>Registered Date</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 30px; color: #94a3b8;">
+                  Loading customer accounts...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── TAB 4: EMAIL NOTIFICATIONS LOG ─── -->
+    <section id="tab-emails" class="admin-tab-content">
+      <div class="section-title-bar">
+        <div>
+          <h2>Email Notifications Log</h2>
+          <p style="margin: 4px 0 0; color: #64748b; font-size: 13.5px;">All automatic notifications sent to customers when they plan trips, get approved, or receive custom admin alerts.</p>
+        </div>
+        <button class="btn-action btn-mail" style="padding: 10px 18px; font-size: 13.5px;" onclick="openCustomMailModal()">
+          ✉️ Send Custom Email
+        </button>
+      </div>
+
+      <div class="admin-card-box" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Recipient Email</th>
+                <th>Subject</th>
+                <th>Notification Type</th>
+                <th>Status</th>
+                <th style="text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="emailsTableBody">
+              <tr>
+                <td colspan="6" style="text-align: center; padding: 30px; color: #94a3b8;">
+                  Loading dispatched emails...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- MODAL: SEND CUSTOM EMAIL -->
+  <div class="modal-overlay hidden" id="mailModalOverlay" onclick="closeMailModal()"></div>
+  <div class="modal-card hidden" id="mailModal" style="max-width: 550px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:12px; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:18px;">✉️ Dispatch Notification Email</h3>
+      <button onclick="closeMailModal()" style="background:none; border:none; font-size:20px; cursor:pointer;">✕</button>
+    </div>
+    <form id="customMailForm" onsubmit="handleSendCustomMail(event)">
+      <div class="form-group">
+        <label>Recipient Email *</label>
+        <input type="email" id="mailRecipient" required placeholder="customer@example.com">
+      </div>
+      <div class="form-group">
+        <label>Customer Name</label>
+        <input type="text" id="mailCustomerName" placeholder="e.g. John Traveler">
+      </div>
+      <div class="form-group">
+        <label>Email Subject *</label>
+        <input type="text" id="mailSubject" required placeholder="e.g. Special Update regarding your upcoming Goa trip">
+      </div>
+      <div class="form-group">
+        <label>Message Content *</label>
+        <textarea id="mailMessage" rows="5" required placeholder="Write your notification message to the customer..."></textarea>
+      </div>
+      <div style="text-align: right; display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+        <button type="button" class="btn-action" style="background:#f1f5f9; color:#475569;" onclick="closeMailModal()">Cancel</button>
+        <button type="submit" class="btn-action btn-approve" style="padding:10px 22px;">Send Email Now →</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- MODAL: PREVIEW EMAIL HTML -->
+  <div class="modal-overlay hidden" id="previewModalOverlay" onclick="closePreviewModal()"></div>
+  <div class="modal-card hidden" id="previewModal" style="max-width: 650px; max-height:85vh;">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:12px; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:18px;" id="previewModalTitle">Email Preview</h3>
+      <button onclick="closePreviewModal()" style="background:none; border:none; font-size:20px; cursor:pointer;">✕</button>
+    </div>
+    <div id="previewModalBody" style="border:1px solid #e2e8f0; border-radius:10px; padding:12px; background:#fff; overflow-y:auto; max-height:60vh;"></div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    const API_BASE = '/api';
+    let allBookings = [];
+    let allEmails = [];
+
+    // Toast helper
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `<span>${type === 'success' ? '✅' : '⚠️'}</span> <span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // Switch Tabs
+    function switchAdminTab(tabId) {
+      document.querySelectorAll('.admin-nav-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
+      });
+      document.querySelectorAll('.admin-tab-content').forEach(tab => {
+        tab.classList.toggle('active', tab.id === `tab-${tabId}`);
+      });
+
+      if (tabId === 'approvals') fetchAdminBookings();
+      if (tabId === 'add-trip') fetchCustomDestinations();
+      if (tabId === 'manage-cart') fetchUsersAndCarts();
+      if (tabId === 'emails') fetchEmailLogs();
+    }
+
+    // Fetch Stats
+    async function fetchAdminStats() {
+      try {
+        const res = await fetch(`${API_BASE}/admin/stats`);
+        const data = await res.json();
+        if (data.success && data.stats) {
+          document.getElementById('statTotalBookings').textContent = data.stats.totalBookings;
+          document.getElementById('statPendingBookings').textContent = data.stats.pendingBookings;
+          document.getElementById('statApprovedBookings').textContent = data.stats.approvedBookings;
+          document.getElementById('statTotalRevenue').textContent = '₹' + Number(data.stats.totalRevenue).toLocaleString();
+          document.getElementById('pendingNavBadge').textContent = data.stats.pendingBookings;
+        }
+      } catch (err) {
+        console.error('Error fetching admin stats:', err);
+      }
+    }
+
+    // Fetch Bookings
+    async function fetchAdminBookings() {
+      try {
+        const res = await fetch(`${API_BASE}/admin/bookings`);
+        const data = await res.json();
+        if (data.success) {
+          allBookings = data.bookings || [];
+          filterBookingsTable();
+          fetchAdminStats();
+        }
+      } catch (err) {
+        console.error('Failed to load bookings:', err);
+      }
+    }
+
+    // Filter Bookings Table
+    function filterBookingsTable() {
+      const q = (document.getElementById('bookingSearchInput').value || '').toLowerCase().trim();
+      const statusFilter = document.getElementById('bookingStatusFilter').value;
+
+      const filtered = allBookings.filter(b => {
+        const matchesQuery = !q || 
+          (b.customer_name && b.customer_name.toLowerCase().includes(q)) ||
+          (b.customer_email && b.customer_email.toLowerCase().includes(q)) ||
+          (b.customer_phone && b.customer_phone.toLowerCase().includes(q)) ||
+          (b.destination_name && b.destination_name.toLowerCase().includes(q)) ||
+          (b.receipt_no && b.receipt_no.toLowerCase().includes(q));
+
+        const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
+        return matchesQuery && matchesStatus;
+      });
+
+      renderBookingsTable(filtered);
+    }
+
+    // Render Bookings Table
+    function renderBookingsTable(list) {
+      const tbody = document.getElementById('bookingsTableBody');
+      if (list.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" style="text-align: center; padding: 40px; color: #94a3b8;">
+              No customer bookings found matching the selected filter.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = list.map(b => {
+        const statusCls = b.status.toLowerCase();
+        const dateStr = new Date(b.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+
+        return `
+          <tr>
+            <td>
+              <strong style="color:var(--admin-primary); font-family:monospace;">${b.receipt_no || 'STP-DEMO'}</strong>
+              <div style="font-size:11px; color:#64748b; margin-top:2px;">${dateStr}</div>
+            </td>
+            <td>
+              <div style="font-weight:700; color:#0f172a;">${b.customer_name}</div>
+              <div style="font-size:12px; color:#64748b;">${b.customer_email}</div>
+              <div style="font-size:11.5px; color:#94a3b8;">📞 ${b.customer_phone || '—'}</div>
+            </td>
+            <td>
+              <strong style="font-size:14px; color:#0f172a;">${b.destination_name}</strong>
+              <div style="font-size:11px; color:#64748b;">📍 Destination ID: ${b.destination_id}</div>
+            </td>
+            <td>
+              <div style="font-size:12.5px;">🏨 ${b.hotel_name || 'Standard Stay'}</div>
+              <div style="font-size:12px; color:#10b981; font-weight:600; margin-top:2px;">🚗 ${b.transport_name || 'Standard Transit'}</div>
+            </td>
+            <td>
+              <div style="font-size:15px; font-weight:800; color:#0f172a;">₹${Number(b.total_price).toLocaleString()}</div>
+            </td>
+            <td>
+              <span class="badge-status ${statusCls}">
+                ${b.status === 'Approved' ? '✅ Approved' : b.status === 'Pending' ? '⏳ Pending' : '❌ Rejected'}
+              </span>
+            </td>
+            <td>
+              <span style="font-size:12px; font-weight:600; color:${b.email_sent ? '#10b981' : '#94a3b8'};">
+                ${b.email_sent ? '✉️ Email Sent' : '✉️ In Queue'}
+              </span>
+            </td>
+            <td style="text-align: right;">
+              <div style="display:inline-flex; gap:6px;">
+                ${b.status !== 'Approved' ? `
+                  <button class="btn-action btn-approve" onclick="updateBookingStatus(${b.id}, 'Approved', '${b.customer_name}', '${b.destination_name}')" title="Approve & Send Confirmation Email">
+                    ✓ Approve &amp; Mail
+                  </button>
+                ` : `
+                  <button class="btn-action btn-mail" onclick="updateBookingStatus(${b.id}, 'Approved', '${b.customer_name}', '${b.destination_name}')" title="Resend Approval Email">
+                    ✉️ Resend Mail
+                  </button>
+                `}
+                ${b.status === 'Pending' ? `
+                  <button class="btn-action btn-reject" onclick="updateBookingStatus(${b.id}, 'Rejected', '${b.customer_name}')" title="Reject Trip">
+                    ✕
+                  </button>
+                ` : ''}
+                <button class="btn-action btn-mail" onclick="openDirectMail('${b.customer_email}', '${b.customer_name}', ${b.id})" title="Send Custom Notification">
+                  💬
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Approve / Reject Booking
+    async function updateBookingStatus(id, newStatus, customerName, destName) {
+      const confirmAction = confirm(`Are you sure you want to set trip status to "${newStatus}" for ${customerName}?${newStatus === 'Approved' ? ' This will automatically send an official trip confirmation email!' : ''}`);
+      if (!confirmAction) return;
+
+      try {
+        const res = await fetch(`${API_BASE}/admin/bookings/${id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || `Booking status updated to ${newStatus}!`);
+          fetchAdminBookings();
+        } else {
+          showToast(data.error || 'Failed to update booking status.', 'error');
+        }
+      } catch (err) {
+        showToast('Server error while updating status.', 'error');
+      }
+    }
+
+    // Add New Destination Form
+    async function handleCreateDestination(e) {
+      e.preventDefault();
+      const payload = {
+        name: document.getElementById('newDestName').value,
+        category: document.getElementById('newDestCategory').value,
+        season: document.getElementById('newDestSeason').value,
+        price: document.getElementById('newDestPrice').value,
+        duration: document.getElementById('newDestDuration').value,
+        imageUrl: document.getElementById('newDestImg').value,
+        attractions: document.getElementById('newDestAttractions').value,
+        description: document.getElementById('newDestDesc').value
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/admin/destinations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`🌟 Destination "${payload.name}" published to customer website!`);
+          document.getElementById('addDestinationForm').reset();
+          fetchCustomDestinations();
+        } else {
+          showToast(data.error || 'Failed to add destination.', 'error');
+        }
+      } catch (err) {
+        showToast('Error connecting to server.', 'error');
+      }
+    }
+
+    // Fetch Custom Destinations
+    async function fetchCustomDestinations() {
+      try {
+        const res = await fetch(`${API_BASE}/admin/destinations`);
+        const data = await res.json();
+        if (data.success) {
+          const tbody = document.getElementById('customDestTableBody');
+          if (!data.destinations || data.destinations.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: #94a3b8;">No custom packages published yet. Use the form above to add one.</td></tr>`;
+            return;
+          }
+          tbody.innerHTML = data.destinations.map(d => `
+            <tr>
+              <td><strong>${d.name}</strong></td>
+              <td><span class="admin-badge" style="background:#0ea5e9;">${d.category}</span></td>
+              <td>🗓️ ${d.season}</td>
+              <td>⏱️ ${d.duration}</td>
+              <td><strong>₹${Number(d.price).toLocaleString()}</strong></td>
+              <td style="font-size:12px; color:#64748b;">${new Date(d.created_at).toLocaleDateString('en-IN')}</td>
+              <td style="text-align: right;">
+                <button class="btn-action btn-reject" onclick="deleteDestination(${d.id}, '${d.name}')">Delete</button>
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load custom destinations:', err);
+      }
+    }
+
+    // Delete Custom Destination
+    async function deleteDestination(id, name) {
+      if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+      try {
+        const res = await fetch(`${API_BASE}/admin/destinations/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Trip package "${name}" deleted.`);
+          fetchCustomDestinations();
+        }
+      } catch (err) {
+        showToast('Failed to delete destination.', 'error');
+      }
+    }
+
+    // Fetch Users & Carts
+    async function fetchUsersAndCarts() {
+      try {
+        const res = await fetch(`${API_BASE}/admin/users`);
+        const data = await res.json();
+        if (data.success && data.users) {
+          // Populate select dropdown
+          const userSelect = document.getElementById('assignUserSelect');
+          userSelect.innerHTML = `<option value="">-- Choose Customer --</option>` + 
+            data.users.map(u => `<option value="${u.id}">${u.name} (${u.email})</option>`).join('');
+
+          // Populate table
+          const tbody = document.getElementById('usersTableBody');
+          tbody.innerHTML = data.users.map(u => `
+            <tr>
+              <td>#${u.id}</td>
+              <td><strong>${u.name}</strong></td>
+              <td>${u.email}</td>
+              <td>
+                ${u.cart && u.cart.length > 0 
+                  ? u.cart.map(t => `<span class="badge-status approved" style="margin-right:4px; margin-bottom:4px;">${t.destination_name} (₹${t.price})</span>`).join('') 
+                  : '<span style="color:#94a3b8; font-size:12px;">Cart Empty</span>'}
+              </td>
+              <td style="font-size:12px; color:#64748b;">${new Date(u.created_at).toLocaleDateString('en-IN')}</td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load users:', err);
+      }
+    }
+
+    // Assign Trip to Customer's Cart
+    async function handleAssignCart(e) {
+      e.preventDefault();
+      const userId = document.getElementById('assignUserSelect').value;
+      const name = document.getElementById('assignDestName').value;
+      const price = document.getElementById('assignDestPrice').value;
+      const duration = document.getElementById('assignDestDuration').value;
+
+      if (!userId) {
+        alert('Please select a customer.');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/admin/assign-cart`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            destination: {
+              name,
+              price: parseInt(price) || 0,
+              duration,
+              category: 'Exclusive Package',
+              img: 'assets/goa.jpg'
+            }
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`🎁 Trip package added directly to customer's cart!`);
+          document.getElementById('assignCartForm').reset();
+          fetchUsersAndCarts();
+        } else {
+          showToast(data.error || 'Failed to assign trip.', 'error');
+        }
+      } catch (err) {
+        showToast('Server error while assigning cart trip.', 'error');
+      }
+    }
+
+    // Fetch Email Logs
+    async function fetchEmailLogs() {
+      try {
+        const res = await fetch(`${API_BASE}/admin/emails`);
+        const data = await res.json();
+        if (data.success) {
+          allEmails = data.emails || [];
+          const tbody = document.getElementById('emailsTableBody');
+          if (allEmails.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 30px; color: #94a3b8;">No email notifications dispatched yet.</td></tr>`;
+            return;
+          }
+          tbody.innerHTML = allEmails.map((m, idx) => `
+            <tr>
+              <td style="font-size:12px; color:#64748b;">${new Date(m.sent_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</td>
+              <td><strong>${m.recipient_email}</strong></td>
+              <td>${m.subject}</td>
+              <td><span class="badge-status ${m.type === 'Trip_Approved' ? 'approved' : 'pending'}">${m.type}</span></td>
+              <td><span style="color:#10b981; font-weight:700;">✓ Dispatched</span></td>
+              <td style="text-align: right;">
+                <button class="btn-action btn-mail" onclick="previewEmail(${idx})">👁️ Preview HTML</button>
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load email logs:', err);
+      }
+    }
+
+    function previewEmail(index) {
+      const email = allEmails[index];
+      if (!email) return;
+      document.getElementById('previewModalTitle').textContent = `Subject: ${email.subject}`;
+      document.getElementById('previewModalBody').innerHTML = email.body;
+      document.getElementById('previewModalOverlay').classList.remove('hidden');
+      document.getElementById('previewModal').classList.remove('hidden');
+    }
+    function closePreviewModal() {
+      document.getElementById('previewModalOverlay').classList.add('hidden');
+      document.getElementById('previewModal').classList.add('hidden');
+    }
+
+    // Custom Mail Modal
+    function openCustomMailModal() {
+      document.getElementById('mailModalOverlay').classList.remove('hidden');
+      document.getElementById('mailModal').classList.remove('hidden');
+    }
+    function openDirectMail(email, name, bookingId) {
+      document.getElementById('mailRecipient').value = email;
+      document.getElementById('mailCustomerName').value = name;
+      document.getElementById('mailSubject').value = `Important Notice regarding your Trip #${bookingId}`;
+      openCustomMailModal();
+    }
+    function closeMailModal() {
+      document.getElementById('mailModalOverlay').classList.add('hidden');
+      document.getElementById('mailModal').classList.add('hidden');
+    }
+
+    async function handleSendCustomMail(e) {
+      e.preventDefault();
+      const payload = {
+        recipientEmail: document.getElementById('mailRecipient').value,
+        customerName: document.getElementById('mailCustomerName').value,
+        subject: document.getElementById('mailSubject').value,
+        message: document.getElementById('mailMessage').value
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/admin/send-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`✉️ Notification email dispatched to ${payload.recipientEmail}!`);
+          closeMailModal();
+          document.getElementById('customMailForm').reset();
+          fetchEmailLogs();
+        } else {
+          showToast(data.error || 'Failed to send email.', 'error');
+        }
+      } catch (err) {
+        showToast('Error dispatching email.', 'error');
+      }
+    }
+
+    // Auto-init
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchAdminStats();
+      fetchAdminBookings();
+    });
+  </script>
+</body>
+</html>

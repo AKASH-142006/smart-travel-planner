@@ -1,5 +1,5 @@
 // ---------------- Shared data & Configuration ----------------
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = '/api';
 
 // Helper: returns local asset path, falling back to Unsplash CDN if needed
 function destImg(local, unsplashId, w = 1200) {
