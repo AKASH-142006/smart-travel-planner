@@ -379,11 +379,213 @@
       from { transform: translateX(100%); opacity: 0; }
       to { transform: translateX(0); opacity: 1; }
     }
+
+    /* ─── ADMIN LOGIN GATE STYLES ─── */
+    .admin-gate-overlay {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at 50% 20%, #1e293b, #090d16);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      backdrop-filter: blur(8px);
+    }
+    .admin-gate-card {
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 24px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(245, 158, 11, 0.15);
+      max-width: 480px;
+      width: 100%;
+      padding: 40px;
+      color: white;
+      text-align: left;
+      position: relative;
+      animation: gatePop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes gatePop {
+      from { opacity: 0; transform: scale(0.95) translateY(12px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .gate-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+    .gate-title {
+      font-size: 26px;
+      font-weight: 800;
+      margin: 0 0 8px;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+    }
+    .gate-subtitle {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .gate-field {
+      margin-bottom: 20px;
+    }
+    .gate-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #cbd5e1;
+      margin-bottom: 8px;
+    }
+    .gate-input {
+      width: 100%;
+      background: #1e293b;
+      border: 1.5px solid #334155;
+      color: white;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 14.5px;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+      transition: all 0.2s;
+    }
+    .gate-input:focus {
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+    }
+    .gate-btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white;
+      border: none;
+      padding: 15px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(245, 158, 11, 0.35);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .gate-btn-submit:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(245, 158, 11, 0.45);
+    }
+    .gate-btn-submit:active {
+      transform: translateY(1px);
+    }
+    .gate-helper-card {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px dashed #475569;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin: 22px 0 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .gate-helper-text {
+      font-size: 12.5px;
+      color: #94a3b8;
+      line-height: 1.4;
+    }
+    .gate-helper-btn {
+      background: rgba(245, 158, 11, 0.2);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fde68a;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .gate-helper-btn:hover {
+      background: rgba(245, 158, 11, 0.35);
+    }
+    .gate-error-banner {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 18px;
+      display: none;
+      align-items: flex-start;
+      gap: 8px;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
 
-  <!-- ADMIN NAVBAR -->
+  <!-- ─── 1. RESTRICTED ADMIN LOGIN GATE (Visible when not authenticated) ─── -->
+  <div id="adminLoginGate" class="admin-gate-overlay">
+    <div class="admin-gate-card">
+      <div class="gate-badge">
+        <span>🛡️</span> Restricted Administrator Portal
+      </div>
+      <h1 class="gate-title">Admin Authentication</h1>
+      <p class="gate-subtitle">
+        Only the designated system administrator has authorization to access this portal. Customer accounts are strictly prohibited from logging in here.
+      </p>
+
+      <div id="gateErrorAlert" class="gate-error-banner">
+        <span>⚠️</span>
+        <span id="gateErrorText">Invalid credentials or access denied.</span>
+      </div>
+
+      <form id="adminLoginForm" onsubmit="handleAdminLogin(event)">
+        <div class="gate-field">
+          <label class="gate-label">Admin Email</label>
+          <input id="adminEmailInput" type="email" class="gate-input" placeholder="admin@gmail.com" required autocomplete="username">
+        </div>
+
+        <div class="gate-field">
+          <label class="gate-label">Admin Password</label>
+          <input id="adminPasswordInput" type="password" class="gate-input" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+
+        <button type="submit" id="adminSubmitBtn" class="gate-btn-submit">
+          🔐 Authenticate &amp; Open Control Center
+        </button>
+      </form>
+
+      <div class="gate-helper-card">
+        <div class="gate-helper-text">
+          <strong style="color: #f8fafc; display:block;">Designated Admin Account</strong>
+          <code>admin@gmail.com</code> / <code>admin123</code>
+        </div>
+        <button type="button" class="gate-helper-btn" onclick="fillAdminCredentials()">
+          ⚡ Quick Fill
+        </button>
+      </div>
+
+      <div style="text-align: center; margin-top: 14px;">
+        <a href="index.html" style="color: #94a3b8; font-size: 13px; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+          ← Return to Customer Travel Website
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 2. ADMIN NAVBAR (Protected) ─── -->
   <header class="admin-navbar">
     <div class="admin-brand">
       <span style="font-size: 24px;">🧭</span>
@@ -391,7 +593,7 @@
       <span class="admin-badge">Admin Control Center</span>
     </div>
     
-    <nav class="admin-nav-links">
+    <nav class="admin-nav-links" id="adminNavLinks" style="display: none;">
       <button class="admin-nav-btn active" data-tab="approvals" onclick="switchAdminTab('approvals')">
         <span>📋</span> Trip Approvals <span id="pendingNavBadge" style="background:#ef4444; color:white; font-size:10px; padding:2px 6px; border-radius:10px; margin-left:4px;">0</span>
       </button>
@@ -407,13 +609,24 @@
     </nav>
 
     <div style="display: flex; align-items: center; gap: 12px;">
+      <!-- Admin User Chip -->
+      <div id="adminUserBadge" style="display: none; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); padding: 5px 14px; border-radius: 20px; font-size: 13px;">
+        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981;"></span>
+        <span id="adminEmailDisplay" style="font-weight:700; color:white;">admin@gmail.com</span>
+        <span style="background:#f59e0b; color:white; font-size:10px; font-weight:800; padding:2px 6px; border-radius:4px; text-transform:uppercase;">Admin</span>
+        <button onclick="handleAdminLogout()" style="background:transparent; border:none; color:#fca5a5; font-weight:700; cursor:pointer; font-size:12px; margin-left:8px; padding:2px 6px; border-radius:4px;" title="Sign out of Admin Portal">
+          🚪 Logout
+        </button>
+      </div>
+
       <a href="index.html" class="admin-exit-btn">
-        <span>🌍</span> View Customer Site
+        <span>🌍</span> Customer Site
       </a>
     </div>
   </header>
 
-  <div class="admin-container">
+  <!-- ─── 3. ADMIN DASHBOARD CONTENT (Protected) ─── -->
+  <div class="admin-container" id="adminMainDashboard" style="display: none;">
 
     <!-- METRICS OVERVIEW -->
     <div class="metrics-grid">
@@ -1011,9 +1224,12 @@
               <td><strong>${u.name}</strong></td>
               <td>${u.email}</td>
               <td>
+                ${u.plannedTrips && u.plannedTrips.length > 0 
+                  ? u.plannedTrips.map(p => `<div style="margin-bottom:3px;"><span class="badge-status pending" style="font-size:11px;">🧭 ${p.title} (${p.duration_days}D • ₹${p.budget})</span></div>`).join('') 
+                  : ''}
                 ${u.cart && u.cart.length > 0 
-                  ? u.cart.map(t => `<span class="badge-status approved" style="margin-right:4px; margin-bottom:4px;">${t.destination_name} (₹${t.price})</span>`).join('') 
-                  : '<span style="color:#94a3b8; font-size:12px;">Cart Empty</span>'}
+                  ? u.cart.map(t => `<span class="badge-status approved" style="margin-right:4px; margin-bottom:4px;">🎒 ${t.destination_name} (₹${t.price})</span>`).join('') 
+                  : (u.plannedTrips && u.plannedTrips.length > 0 ? '' : '<span style="color:#94a3b8; font-size:12px;">No active trips</span>')}
               </td>
               <td style="font-size:12px; color:#64748b;">${new Date(u.created_at).toLocaleDateString('en-IN')}</td>
             </tr>
@@ -1153,10 +1369,113 @@
       }
     }
 
-    // Auto-init
+    // ─── ADMIN AUTHENTICATION & SESSION MANAGEMENT ───
+    const ADMIN_SESSION_KEY = 'stp_admin_session';
+
+    function checkAdminAuth() {
+      const gate = document.getElementById('adminLoginGate');
+      const dashboard = document.getElementById('adminMainDashboard');
+      const navLinks = document.getElementById('adminNavLinks');
+      const userBadge = document.getElementById('adminUserBadge');
+      const emailDisplay = document.getElementById('adminEmailDisplay');
+
+      let session = null;
+      try {
+        session = JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || 'null');
+      } catch (e) {
+        session = null;
+      }
+
+      const isValidAdmin = session && 
+                           session.user && 
+                           session.user.role === 'admin' && 
+                           session.user.email === 'admin@gmail.com';
+
+      if (isValidAdmin) {
+        // Hide gate, show dashboard
+        gate.style.display = 'none';
+        dashboard.style.display = 'block';
+        navLinks.style.display = 'flex';
+        userBadge.style.display = 'inline-flex';
+        if (emailDisplay) emailDisplay.textContent = session.user.email;
+
+        // Fetch fresh data
+        fetchAdminStats();
+        fetchAdminBookings();
+      } else {
+        // Enforce Login Gate
+        gate.style.display = 'flex';
+        dashboard.style.display = 'none';
+        navLinks.style.display = 'none';
+        userBadge.style.display = 'none';
+      }
+    }
+
+    function fillAdminCredentials() {
+      document.getElementById('adminEmailInput').value = 'admin@gmail.com';
+      document.getElementById('adminPasswordInput').value = 'admin123';
+      document.getElementById('gateErrorAlert').style.display = 'none';
+    }
+
+    async function handleAdminLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('adminEmailInput').value.trim().toLowerCase();
+      const password = document.getElementById('adminPasswordInput').value;
+      const errorBox = document.getElementById('gateErrorAlert');
+      const errorText = document.getElementById('gateErrorText');
+      const submitBtn = document.getElementById('adminSubmitBtn');
+
+      errorBox.style.display = 'none';
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '⏳ Verifying Credentials...';
+
+      try {
+        const res = await fetch(`${API_BASE}/admin/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          errorText.textContent = data.error || 'Access Denied: Invalid credentials.';
+          errorBox.style.display = 'flex';
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '🔐 Authenticate &amp; Open Control Center';
+          return;
+        }
+
+        // Store Admin Session
+        localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(data));
+        showToast('🛡️ Welcome, Administrator!');
+        submitBtn.innerHTML = '✓ Authorized! Entering Portal...';
+        
+        setTimeout(() => {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '🔐 Authenticate &amp; Open Control Center';
+          checkAdminAuth();
+        }, 500);
+
+      } catch (err) {
+        console.error('Admin login error:', err);
+        errorText.textContent = 'Server connection error. Please ensure the backend is running.';
+        errorBox.style.display = 'flex';
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '🔐 Authenticate &amp; Open Control Center';
+      }
+    }
+
+    function handleAdminLogout() {
+      if (confirm('Are you sure you want to log out of the Admin Control Center?')) {
+        localStorage.removeItem(ADMIN_SESSION_KEY);
+        showToast('🔒 Admin session logged out successfully.');
+        checkAdminAuth();
+      }
+    }
+
+    // Auto-init on page load
     document.addEventListener('DOMContentLoaded', () => {
-      fetchAdminStats();
-      fetchAdminBookings();
+      checkAdminAuth();
     });
   </script>
 </body>

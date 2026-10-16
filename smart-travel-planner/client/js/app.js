@@ -354,6 +354,11 @@ const SESSION_KEY = "stp_session";
 
 let tripCart = [];
 let activeCategory = 'all';
+let plannerConfig = null;
+let currentItinerary = [];
+let savedPlans = [];
+let activePlanId = null;
+let activePlanFilter = 'all';
 
 // Load trip cart from MySQL DB for logged-in user
 async function loadCartFromDB() {
@@ -435,12 +440,18 @@ document.querySelectorAll('#tabNav button').forEach(btn => {
 
 // ---------------- Authentication State ----------------
 function logoutUser() {
+  // Wipe in-memory plan state BEFORE switching user so old plans never show
+  savedPlans = [];
+  activePlanId = null;
+  updateSavedPlansUI();
+
   currentUser = null;
   localStorage.removeItem(SESSION_KEY);
   tripCart = [];
   updateCartUI();
   renderDestinations();
   renderAuthState();
+  loadSavedPlansFromStorage(); // will load empty guest plans
   // Clear badge
   const badge = document.getElementById('cartCountBadge');
   if (badge) badge.textContent = '0';
@@ -493,6 +504,7 @@ function renderAuthState() {
   }
   renderAuthState();
   loadCartFromDB(); // Load cart from MySQL
+  loadSavedPlansFromStorage(); // Load saved trip plans from MySQL/LocalStorage
 })();
 
 // ---------------- Trip Cart Drawer Functionality ----------------
@@ -2474,10 +2486,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ---------------- COMPLETE TRIP PLANNER ----------------
 
-let currentItinerary = [];
-let plannerConfig = {};
-
-function openPlanTripModal(defaultDestId = null) {
+function openPlanTripModal(defaultDestId = null, existingConfig = null) {
   const destSelect = document.getElementById('ptDest');
   destSelect.innerHTML = destinations.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
   
@@ -2485,11 +2494,26 @@ function openPlanTripModal(defaultDestId = null) {
     destSelect.value = defaultDestId;
   }
   
-  // Set default dates
-  const today = new Date();
-  const nextWeek = new Date();
-  nextWeek.setDate(today.getDate() + 7);
-  document.getElementById('ptStartDate').value = nextWeek.toISOString().split('T')[0];
+  if (existingConfig) {
+    if (existingConfig.dest && existingConfig.dest.id) destSelect.value = existingConfig.dest.id;
+    if (existingConfig.startDate) document.getElementById('ptStartDate').value = existingConfig.startDate;
+    if (existingConfig.days) document.getElementById('ptDays').value = existingConfig.days;
+    if (existingConfig.travellers) document.getElementById('ptTravellers').value = existingConfig.travellers;
+    if (existingConfig.budget) document.getElementById('ptBudget').value = existingConfig.budget;
+    if (existingConfig.group) document.getElementById('ptGroup').value = existingConfig.group;
+    if (existingConfig.style) document.getElementById('ptStyle').value = existingConfig.style;
+    if (existingConfig.interests && Array.isArray(existingConfig.interests)) {
+      document.querySelectorAll('#ptInterests input').forEach(cb => {
+        cb.checked = existingConfig.interests.some(i => cb.value.includes(i));
+      });
+    }
+  } else {
+    // Set default dates
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+    document.getElementById('ptStartDate').value = nextWeek.toISOString().split('T')[0];
+  }
   
   document.getElementById('planTripModalOverlay').classList.remove('hidden');
   document.getElementById('planTripModal').classList.remove('hidden');
@@ -2534,7 +2558,7 @@ function generateItinerary(e) {
     interests.forEach(i => {
       if (p.type === i) p.score += 2;
     });
-    // Add random cost and duration if not present
+    // Add realistic cost and duration if not present
     p.cost = p.cost || (Math.floor(Math.random() * 4 + 1) * 100);
     p.durationMins = p.durationMins || (Math.floor(Math.random() * 2 + 1) * 60);
   });
@@ -2650,7 +2674,7 @@ function generateItinerary(e) {
   renderItinerary();
 }
 
-function renderItinerary() {
+function renderItinerary(savedPlanRef = null) {
   document.getElementById('destList').parentElement.querySelector('.section-header').classList.add('hidden');
   document.getElementById('destList').parentElement.querySelector('.category-strip').classList.add('hidden');
   document.getElementById('destList').classList.add('hidden');
@@ -2662,34 +2686,70 @@ function renderItinerary() {
   // Calculate total costs
   let totalActivityCost = 0;
   currentItinerary.forEach(d => {
-    d.activities.forEach(a => totalActivityCost += a.cost);
+    if (d.activities) d.activities.forEach(a => totalActivityCost += (a.cost || 0));
   });
-  totalActivityCost *= plannerConfig.travellers;
+  totalActivityCost *= (plannerConfig.travellers || 1);
   
-  let remainingBudget = plannerConfig.budget - totalActivityCost;
+  let remainingBudget = (plannerConfig.budget || 0) - totalActivityCost;
   let budgetColor = remainingBudget >= 0 ? '#10b981' : '#ef4444';
   let warningHtml = remainingBudget < 0 ? `<div style="background:#fee2e2; color:#ef4444; padding:10px; border-radius:6px; margin-top:10px; font-size:13px; font-weight:700;">⚠️ This itinerary exceeds your budget. Try removing activities or switching to a relaxed pace.</div>` : '';
   
-  let html = `
-    <div style="background:var(--bg); padding:16px; border-radius:12px; margin-bottom:20px;">
-      <h2 style="margin:0 0 8px; color:var(--primary); font-size:24px;">Trip to ${plannerConfig.dest.name}</h2>
-      <div style="display:flex; gap:16px; font-size:14px; color:#475569; flex-wrap:wrap;">
-        <span>🗓️ ${plannerConfig.days} Days (${new Date(plannerConfig.startDate).toLocaleDateString()})</span>
-        <span>👥 ${plannerConfig.travellers} ${plannerConfig.group}</span>
-        <span>🏃 Pace: ${plannerConfig.style}</span>
+  // Check if we are viewing a saved plan or active plan
+  const planInfo = savedPlanRef || (activePlanId ? savedPlans.find(p => p.id === activePlanId) : null);
+  const planBannerHtml = planInfo ? `
+    <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #93c5fd; padding: 12px 18px; border-radius: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 24px;">🧭</span>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <strong style="font-size: 15px; color: #1e3a8a;">${planInfo.title}</strong>
+            <span class="saved-plan-status-pill status-${(planInfo.status || 'planning').toLowerCase()}">${planInfo.status || 'Planning'}</span>
+          </div>
+          <span style="font-size: 12px; color: #3b82f6;">Saved Plan ID #${planInfo.id} • Last updated: ${new Date(planInfo.updated_at || Date.now()).toLocaleDateString()}</span>
+        </div>
       </div>
-      <div style="margin-top:12px; display:flex; gap:20px; align-items:center;">
+      <div style="display: flex; gap: 8px;">
+        <button class="btn small accent" onclick="openSavePlanModal()">💾 Update This Saved Plan</button>
+        <button class="btn small secondary" onclick="openSavedPlansTab()">View All Plans</button>
+      </div>
+    </div>
+  ` : '';
+
+  const saveBtn = document.getElementById('btnSaveTripPlan');
+  if (saveBtn) {
+    saveBtn.innerHTML = planInfo ? `💾 Update Saved Plan (#${planInfo.id})` : `💾 Save This Planned Trip`;
+  }
+
+  let html = `
+    ${planBannerHtml}
+    <div style="background:var(--bg); padding:18px 20px; border-radius:12px; margin-bottom:20px; border:1px solid #e2e8f0;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
         <div>
-          <span style="font-size:12px; color:var(--muted); font-weight:700;">TOTAL BUDGET</span>
-          <div style="font-size:18px; font-weight:800;">₹${plannerConfig.budget.toLocaleString()}</div>
+          <h2 style="margin:0 0 6px; color:var(--primary); font-size:24px;">Trip to ${(plannerConfig.dest && plannerConfig.dest.name) || (planInfo && (planInfo.destination_name || planInfo.destinationName)) || 'Destination'}</h2>
+          <div style="display:flex; gap:16px; font-size:14px; color:#475569; flex-wrap:wrap;">
+            <span>🗓️ ${plannerConfig.days} Days (${new Date(plannerConfig.startDate).toLocaleDateString()})</span>
+            <span>👥 ${plannerConfig.travellers} ${plannerConfig.group}</span>
+            <span>🏃 Pace: ${plannerConfig.style}</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn secondary small" onclick="openSavePlanModal()" style="font-weight:700;">💾 ${planInfo ? 'Update Plan' : 'Save Plan'}</button>
+          <button class="btn accent small" onclick="saveItineraryToBudget()">💰 Send to Budget</button>
+        </div>
+      </div>
+      
+      <div style="margin-top:16px; display:flex; gap:20px; align-items:center; flex-wrap:wrap; padding-top:14px; border-top:1px dashed #cbd5e1;">
+        <div>
+          <span style="font-size:11px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">TOTAL BUDGET</span>
+          <div style="font-size:19px; font-weight:800; color:#0f172a;">₹${Number(plannerConfig.budget || 0).toLocaleString()}</div>
         </div>
         <div>
-          <span style="font-size:12px; color:var(--muted); font-weight:700;">ACTIVITY COST</span>
-          <div style="font-size:18px; font-weight:800;">₹${totalActivityCost.toLocaleString()}</div>
+          <span style="font-size:11px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">EST. ACTIVITY COST</span>
+          <div style="font-size:19px; font-weight:800; color:#2563eb;">₹${totalActivityCost.toLocaleString()}</div>
         </div>
         <div>
-          <span style="font-size:12px; color:var(--muted); font-weight:700;">REMAINING (Hotel+Transport)</span>
-          <div style="font-size:18px; font-weight:800; color:${budgetColor};">₹${remainingBudget.toLocaleString()}</div>
+          <span style="font-size:11px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">REMAINING (Hotel + Transport)</span>
+          <div style="font-size:19px; font-weight:800; color:${budgetColor};">₹${remainingBudget.toLocaleString()}</div>
         </div>
       </div>
       ${warningHtml}
@@ -2700,15 +2760,16 @@ function renderItinerary() {
   
   currentItinerary.forEach((day, dIdx) => {
     html += `
-      <div style="margin-bottom:24px; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
-        <div style="background:#f8fafc; padding:12px 16px; border-bottom:1px solid #e2e8f0; font-weight:800; color:var(--primary);">
-          Day ${day.day} - ${day.date}
+      <div style="margin-bottom:24px; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; background:white; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+        <div style="background:#f8fafc; padding:12px 18px; border-bottom:1px solid #e2e8f0; font-weight:800; color:var(--primary); display:flex; justify-content:space-between; align-items:center;">
+          <span>Day ${day.day} - ${day.date}</span>
+          <span style="font-size:12px; color:var(--muted); font-weight:600;">${day.activities ? day.activities.length : 0} activities scheduled</span>
         </div>
-        <div style="padding:16px;">
+        <div style="padding:18px;">
     `;
     
-    if (day.activities.length === 0) {
-      html += `<p style="color:var(--muted); font-size:14px;">No activities scheduled for this day. Relax and explore!</p>`;
+    if (!day.activities || day.activities.length === 0) {
+      html += `<p style="color:var(--muted); font-size:14px; margin:10px 0;">No activities scheduled for this day. Relax and explore!</p>`;
     } else {
       day.activities.forEach((act, aIdx) => {
         let typeInfo = POI_TYPE_CONFIG[act.type] || { color: '#64748b', emoji: '📍', label: 'Activity' };
@@ -2730,9 +2791,9 @@ function renderItinerary() {
                 </div>
                 ${!isMeal ? `<button onclick="removeActivity(${dIdx}, ${aIdx})" style="background:#fee2e2; border:1px solid #fca5a5; color:#ef4444; border-radius:6px; padding:4px 8px; font-size:12px; cursor:pointer;" title="Remove Activity">✕ Remove</button>` : ''}
               </div>
-              <p style="margin:0 0 12px; font-size:13.5px; color:#334155; line-height:1.5;">${act.desc}</p>
+              <p style="margin:0 0 12px; font-size:13.5px; color:#334155; line-height:1.5;">${act.desc || ''}</p>
               <div style="display:flex; gap:12px; font-size:12px; color:var(--muted); flex-wrap:wrap;">
-                <span style="background:#f1f5f9; padding:5px 10px; border-radius:6px; font-weight:600;">⏱️ Duration: ${Math.round(act.durationMins)} mins</span>
+                <span style="background:#f1f5f9; padding:5px 10px; border-radius:6px; font-weight:600;">⏱️ Duration: ${Math.round(act.durationMins || 60)} mins</span>
                 ${act.cost ? `<span style="background:#f1f5f9; padding:5px 10px; border-radius:6px; font-weight:600;">💸 Est. ₹${act.cost}/person</span>` : ''}
               </div>
             </div>
@@ -2750,27 +2811,547 @@ function renderItinerary() {
 }
 
 function removeActivity(dayIndex, actIndex) {
-  currentItinerary[dayIndex].activities.splice(actIndex, 1);
-  renderItinerary();
+  if (currentItinerary[dayIndex] && currentItinerary[dayIndex].activities) {
+    currentItinerary[dayIndex].activities.splice(actIndex, 1);
+    renderItinerary();
+  }
 }
 
 function saveItineraryToBudget() {
   let totalActivityCost = 0;
   currentItinerary.forEach(d => {
-    d.activities.forEach(a => totalActivityCost += a.cost);
+    if (d.activities) d.activities.forEach(a => totalActivityCost += (a.cost || 0));
   });
-  totalActivityCost *= plannerConfig.travellers;
+  totalActivityCost *= (plannerConfig.travellers || 1);
   
-  document.getElementById('totalBudget').value = plannerConfig.budget;
+  document.getElementById('totalBudget').value = plannerConfig.budget || 15000;
   document.getElementById('expActivities').value = totalActivityCost;
   
   // Assign arbitrary values for hotel and transport if they are empty
-  const hotel = document.getElementById('expHotel').value || Math.round((plannerConfig.budget - totalActivityCost) * 0.6);
-  const transport = document.getElementById('expTransport').value || Math.round((plannerConfig.budget - totalActivityCost) * 0.4);
+  const hotel = document.getElementById('expHotel').value || Math.round(((plannerConfig.budget || 15000) - totalActivityCost) * 0.6);
+  const transport = document.getElementById('expTransport').value || Math.round(((plannerConfig.budget || 15000) - totalActivityCost) * 0.4);
   
   document.getElementById('expHotel').value = Math.max(0, hotel);
   document.getElementById('expTransport').value = Math.max(0, transport);
   
   updateBudget();
   document.querySelector('[data-tab="budget"]').click();
+  showToast('Budget synchronized from trip plan!');
 }
+
+// ---------------- SAVED PLANNED TRIPS LOGIC ----------------
+
+function getPlansStorageKey() {
+  return currentUser && currentUser.id ? `stp_saved_plans_u_${currentUser.id}` : 'stp_saved_plans_guest';
+}
+
+async function loadSavedPlansFromStorage() {
+  // Clean up legacy global key so other accounts never leak
+  try { localStorage.removeItem('stp_saved_plans'); } catch (_) {}
+
+  const storageKey = getPlansStorageKey();
+  let localPlans = [];
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw) localPlans = JSON.parse(raw);
+  } catch (_) {
+    localPlans = [];
+  }
+
+  if (currentUser && currentUser.id) {
+    try {
+      const res = await fetch(`${API_BASE}/planned-trips/user/${currentUser.id}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.plans)) {
+        // Strictly load this specific logged-in user's plans from database
+        savedPlans = data.plans;
+        localStorage.setItem(storageKey, JSON.stringify(savedPlans));
+        const syncStatus = document.getElementById('savedPlansSyncStatus');
+        if (syncStatus) syncStatus.innerHTML = `☁️ Account: ${currentUser.email} (${savedPlans.length} plans)`;
+      } else {
+        savedPlans = localPlans;
+      }
+    } catch (err) {
+      console.warn('Could not fetch cloud plans, using user local cache:', err);
+      savedPlans = localPlans;
+      const syncStatus = document.getElementById('savedPlansSyncStatus');
+      if (syncStatus) syncStatus.innerHTML = `📱 Offline Cache (${savedPlans.length} plans)`;
+    }
+  } else {
+    // Guest view: only show guest plans, never another account's plans
+    savedPlans = localPlans;
+    const syncStatus = document.getElementById('savedPlansSyncStatus');
+    if (syncStatus) syncStatus.innerHTML = `📱 Guest Storage (Log in to save to your personal account)`;
+  }
+
+  updateSavedPlansUI();
+}
+
+function updateSavedPlansUI() {
+  const badge = document.getElementById('savedPlansBadge');
+  if (badge) {
+    badge.textContent = savedPlans.length;
+    badge.style.display = savedPlans.length > 0 ? 'inline-block' : 'none';
+  }
+
+  const profileCount = document.getElementById('profileSavedPlansCount');
+  if (profileCount) profileCount.textContent = savedPlans.length;
+
+  const profileStatus = document.getElementById('profilePlansStatus');
+  if (profileStatus) {
+    profileStatus.textContent = savedPlans.length === 0
+      ? 'No saved trip plans yet — start planning your next adventure!'
+      : `${savedPlans.length} customized travel plan${savedPlans.length === 1 ? '' : 's'} saved`;
+  }
+
+  // Update filter counters
+  const cAll = document.getElementById('countFilterAll');
+  if (cAll) cAll.textContent = savedPlans.length;
+
+  const cPlanning = document.getElementById('countFilterPlanning');
+  if (cPlanning) cPlanning.textContent = savedPlans.filter(p => (p.status || 'planning').toLowerCase() === 'planning').length;
+
+  const cReady = document.getElementById('countFilterReady');
+  if (cReady) cReady.textContent = savedPlans.filter(p => (p.status || '').toLowerCase() === 'ready').length;
+
+  const cBooked = document.getElementById('countFilterBooked');
+  if (cBooked) cBooked.textContent = savedPlans.filter(p => (p.status || '').toLowerCase() === 'booked').length;
+
+  // Filter plans for the main grid
+  let displayedPlans = savedPlans;
+  if (activePlanFilter !== 'all') {
+    displayedPlans = savedPlans.filter(p => (p.status || 'planning').toLowerCase() === activePlanFilter.toLowerCase());
+  }
+
+  const grid = document.getElementById('savedPlansGrid');
+  const emptyView = document.getElementById('savedPlansEmpty');
+
+  if (savedPlans.length === 0) {
+    if (grid) grid.innerHTML = '';
+    if (emptyView) emptyView.classList.remove('hidden');
+  } else {
+    if (emptyView) emptyView.classList.add('hidden');
+    if (grid) {
+      if (displayedPlans.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--muted); background: white; border-radius: 12px; border: 1px dashed #cbd5e1;">
+            <p>No trip plans found with status "<strong>${activePlanFilter}</strong>".</p>
+            <button class="btn small secondary" onclick="filterSavedPlansByStatus('all', document.querySelector('.plan-filter-btn'))">Show All Plans</button>
+          </div>
+        `;
+      } else {
+        grid.innerHTML = displayedPlans.map(plan => renderSavedPlanCard(plan)).join('');
+      }
+    }
+  }
+
+  // Also render showcase inside Account profile
+  const profileList = document.getElementById('profileSavedPlansList');
+  if (profileList) {
+    if (savedPlans.length === 0) {
+      profileList.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; padding: 30px; background: white; border-radius: 12px; border: 1px dashed #cbd5e1;">
+          <p style="color: var(--muted); margin: 0 0 12px;">You haven't saved any planned trips yet.</p>
+          <button class="btn accent small" onclick="openPlanTripModal()">✨ Plan a New Trip</button>
+        </div>
+      `;
+    } else {
+      profileList.innerHTML = savedPlans.slice(0, 4).map(plan => renderSavedPlanCard(plan)).join('');
+    }
+  }
+}
+
+function renderSavedPlanCard(plan) {
+  const destId = plan.destination_id || plan.destinationId || 1;
+  const destName = plan.destination_name || plan.destinationName || 'Destination';
+  const destObj = destinations.find(d => d.id === destId) || {
+    name: destName,
+    img: 'assets/goa.jpg',
+    category: 'Travel'
+  };
+
+  const statusLower = (plan.status || 'planning').toLowerCase();
+  let statusClass = 'status-planning';
+  let statusText = '🟡 In Planning';
+  if (statusLower === 'ready') {
+    statusClass = 'status-ready';
+    statusText = '🟢 Ready to Book';
+  } else if (statusLower === 'booked') {
+    statusClass = 'status-booked';
+    statusText = '🔵 Booked';
+  }
+
+  const durationDays = plan.duration_days || plan.durationDays || 3;
+  const durationStr = `${durationDays} Days / ${Math.max(1, durationDays - 1)} Nights`;
+  const startDate = plan.start_date || plan.startDate;
+  const dateStr = startDate ? new Date(startDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : 'Flexible';
+  const activityCost = plan.activity_cost || plan.activityCost || 0;
+  const remainingCost = Math.max(0, (plan.budget || 0) - activityCost);
+
+  return `
+    <div class="saved-plan-card" id="planCard-${plan.id}" data-plan-id="${Number(plan.id)}">
+      <div class="saved-plan-cover" style="background-image: url('${destObj.img || 'assets/goa.jpg'}');">
+        <span class="saved-plan-dest-badge">📍 ${destName} • ${destObj.category || 'Package'}</span>
+        <span class="saved-plan-status-pill ${statusClass}">${statusText}</span>
+        <div class="saved-plan-cover-title">
+          <h3>${plan.title}</h3>
+          <span>🗓️ ${dateStr} • ${durationStr}</span>
+        </div>
+      </div>
+
+      <div class="saved-plan-body">
+        <div class="saved-plan-metrics">
+          <div class="saved-plan-metric-box">
+            <span class="label">👥 Travellers</span>
+            <span class="val">${plan.travellers || 1} (${plan.group_type || plan.groupType || 'Solo'})</span>
+          </div>
+          <div class="saved-plan-metric-box">
+            <span class="label">🏃 Pace</span>
+            <span class="val">${plan.pace_style || plan.paceStyle || 'Balanced'}</span>
+          </div>
+        </div>
+
+        <div class="saved-plan-budget-box">
+          <div class="saved-plan-budget-row">
+            <span style="color:var(--muted); font-weight:600;">Target Budget:</span>
+            <strong style="color:#0f172a;">₹${Number(plan.budget || 0).toLocaleString()}</strong>
+          </div>
+          <div class="saved-plan-budget-row">
+            <span style="color:var(--muted); font-weight:600;">Est. Activity Cost:</span>
+            <strong style="color:#2563eb;">₹${Number(activityCost).toLocaleString()}</strong>
+          </div>
+          <div class="saved-plan-budget-row" style="margin-top:4px; padding-top:4px; border-top:1px dashed #cbd5e1;">
+            <span style="color:var(--muted); font-weight:600;">Remaining for Stay:</span>
+            <strong style="color:#10b981;">₹${remainingCost.toLocaleString()}</strong>
+          </div>
+        </div>
+
+        ${plan.notes ? `<div class="saved-plan-notes">📝 <strong>Notes:</strong> ${plan.notes}</div>` : ''}
+
+        <div class="saved-plan-footer-actions">
+          <button class="btn accent small" style="flex:1; justify-content:center; font-weight:700;" onclick="reviewSavedPlan(${plan.id})">
+            👁️ Review Plan
+          </button>
+          <button class="btn secondary small" style="flex:1; justify-content:center;" onclick="continuePlanningSavedPlan(${plan.id})">
+            ✏️ Continue Planning
+          </button>
+          <button class="btn small" style="background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1;" title="Send to Budget Calculator" onclick="syncPlanToBudget(${plan.id})">
+            💰 Budget
+          </button>
+          <button class="btn small" style="background:#fee2e2; color:#ef4444; border:1px solid #fca5a5;" title="Delete Plan" onclick="deleteSavedPlan(${plan.id})">
+            🗑️
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function filterSavedPlansByStatus(status, btn) {
+  activePlanFilter = status;
+  document.querySelectorAll('.plan-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  updateSavedPlansUI();
+}
+
+function openSavedPlansTab() {
+  const btn = document.querySelector('[data-tab="savedplans"]');
+  if (btn) btn.click();
+}
+
+function openSavePlanModal() {
+  if (!plannerConfig || !plannerConfig.dest) {
+    alert("Please plan or generate an itinerary first!");
+    return;
+  }
+
+  const existingPlan = activePlanId ? savedPlans.find(p => p.id === activePlanId) : null;
+
+  document.getElementById('savePlanModalTitle').textContent = existingPlan ? 'Update Saved Trip Plan' : 'Save Trip Plan';
+  document.getElementById('btnConfirmSavePlan').textContent = existingPlan ? '💾 Update Plan' : '💾 Save Trip Plan';
+
+  document.getElementById('spTitle').value = existingPlan ? existingPlan.title : `${plannerConfig.days}-Day ${plannerConfig.dest.name} Getaway`;
+  document.getElementById('spDestDisplay').value = plannerConfig.dest.name;
+  document.getElementById('spStatus').value = existingPlan ? existingPlan.status : 'Planning';
+  document.getElementById('spNotes').value = existingPlan ? (existingPlan.notes || '') : '';
+
+  let totalCost = 0;
+  if (currentItinerary && Array.isArray(currentItinerary)) {
+    currentItinerary.forEach(d => {
+      if (d.activities) d.activities.forEach(a => totalCost += (a.cost || 0));
+    });
+    totalCost *= (plannerConfig.travellers || 1);
+  }
+
+  document.getElementById('spSummaryDuration').textContent = `${plannerConfig.days} Days / ${Math.max(1, plannerConfig.days - 1)} Nights`;
+  document.getElementById('spSummaryTravellers').textContent = `${plannerConfig.travellers} (${plannerConfig.group || 'Solo'})`;
+  document.getElementById('spSummaryBudget').textContent = `₹${(plannerConfig.budget || 0).toLocaleString()}`;
+  document.getElementById('spSummaryCost').textContent = `₹${totalCost.toLocaleString()}`;
+
+  document.getElementById('savePlanModalOverlay').classList.remove('hidden');
+  document.getElementById('savePlanModal').classList.remove('hidden');
+}
+
+function closeSavePlanModal() {
+  document.getElementById('savePlanModalOverlay').classList.add('hidden');
+  document.getElementById('savePlanModal').classList.add('hidden');
+}
+
+async function handleSavePlanSubmit(event) {
+  event.preventDefault();
+
+  const title = document.getElementById('spTitle').value.trim();
+  const status = document.getElementById('spStatus').value;
+  const notes = document.getElementById('spNotes').value.trim();
+
+  let totalActivityCost = 0;
+  if (currentItinerary && Array.isArray(currentItinerary)) {
+    currentItinerary.forEach(d => {
+      if (d.activities) d.activities.forEach(a => totalActivityCost += (a.cost || 0));
+    });
+    totalActivityCost *= (plannerConfig.travellers || 1);
+  }
+
+  const payload = {
+    id: activePlanId || undefined,
+    userId: currentUser ? currentUser.id : null,
+    title,
+    destinationId: plannerConfig.dest.id,
+    destination_id: plannerConfig.dest.id,
+    destinationName: plannerConfig.dest.name,
+    destination_name: plannerConfig.dest.name,
+    startDate: plannerConfig.startDate,
+    start_date: plannerConfig.startDate,
+    durationDays: plannerConfig.days,
+    duration_days: plannerConfig.days,
+    travellers: plannerConfig.travellers,
+    groupType: plannerConfig.group,
+    group_type: plannerConfig.group,
+    paceStyle: plannerConfig.style,
+    pace_style: plannerConfig.style,
+    budget: plannerConfig.budget,
+    activityCost: totalActivityCost,
+    activity_cost: totalActivityCost,
+    interests: plannerConfig.interests,
+    itineraryData: currentItinerary,
+    itinerary_data: JSON.stringify(currentItinerary),
+    notes,
+    status
+  };
+
+  closeSavePlanModal();
+
+  try {
+    const res = await fetch(`${API_BASE}/planned-trips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      if (!activePlanId && data.planId) {
+        activePlanId = data.planId;
+        payload.id = data.planId;
+      }
+      showToast(data.message || '🎉 Trip plan saved successfully!');
+    }
+  } catch (err) {
+    console.warn('Saved plan locally (server unreachable):', err);
+    if (!activePlanId) {
+      payload.id = Date.now();
+      activePlanId = payload.id;
+    }
+    showToast('💾 Trip plan saved locally!');
+  }
+
+  // Update local storage (scoped per user account — never a shared global key)
+  payload.id = payload.id || activePlanId || Date.now();
+  payload.updated_at = new Date().toISOString();
+  const existingIdx = savedPlans.findIndex(p => p.id === payload.id);
+  if (existingIdx > -1) {
+    savedPlans[existingIdx] = { ...savedPlans[existingIdx], ...payload };
+  } else {
+    savedPlans.unshift(payload);
+  }
+  localStorage.setItem(getPlansStorageKey(), JSON.stringify(savedPlans));
+
+  updateSavedPlansUI();
+
+  // Update button in planner
+  const btn = document.getElementById('btnSaveTripPlan');
+  if (btn) btn.innerHTML = `✅ Saved (#${payload.id}) — Update`;
+}
+
+function reviewSavedPlan(planId) {
+  const plan = savedPlans.find(p => Number(p.id) === Number(planId));
+  if (!plan) return;
+
+  activePlanId = plan.id;
+  const destId = plan.destination_id || plan.destinationId || 1;
+  const destName = plan.destination_name || plan.destinationName || 'Destination';
+  const dest = destinations.find(d => d.id === destId) || {
+    id: destId,
+    name: destName,
+    img: 'assets/goa.jpg'
+  };
+
+  plannerConfig = {
+    dest,
+    startDate: plan.start_date || plan.startDate || new Date().toISOString().split('T')[0],
+    days: plan.duration_days || plan.durationDays || 3,
+    travellers: plan.travellers || 1,
+    budget: plan.budget || 15000,
+    group: plan.group_type || plan.groupType || 'solo',
+    style: plan.pace_style || plan.paceStyle || 'balanced',
+    interests: plan.interests || []
+  };
+
+  currentItinerary = plan.itineraryData || plan.itinerary_data || [];
+  if (typeof currentItinerary === 'string') {
+    try { currentItinerary = JSON.parse(currentItinerary); } catch (_) { currentItinerary = []; }
+  }
+
+  // Switch to destination tab and render itinerary
+  document.querySelector('[data-tab="destinations"]').click();
+  renderItinerary(plan);
+  
+  // Update button label
+  const btn = document.getElementById('btnSaveTripPlan');
+  if (btn) btn.innerHTML = `💾 Update Saved Plan (#${plan.id})`;
+
+  showToast(`Loaded "${plan.title}" for review!`);
+}
+
+function continuePlanningSavedPlan(planId) {
+  const plan = savedPlans.find(p => Number(p.id) === Number(planId));
+  if (!plan) return;
+
+  activePlanId = plan.id;
+  const destId = plan.destination_id || plan.destinationId || 1;
+  const destName = plan.destination_name || plan.destinationName || 'Destination';
+  const dest = destinations.find(d => d.id === destId) || {
+    id: destId,
+    name: destName,
+    img: 'assets/goa.jpg'
+  };
+
+  plannerConfig = {
+    dest,
+    startDate: plan.start_date || plan.startDate || new Date().toISOString().split('T')[0],
+    days: plan.duration_days || plan.durationDays || 3,
+    travellers: plan.travellers || 1,
+    budget: plan.budget || 15000,
+    group: plan.group_type || plan.groupType || 'solo',
+    style: plan.pace_style || plan.paceStyle || 'balanced',
+    interests: plan.interests || []
+  };
+
+  currentItinerary = plan.itineraryData || plan.itinerary_data || [];
+  if (typeof currentItinerary === 'string') {
+    try { currentItinerary = JSON.parse(currentItinerary); } catch (_) { currentItinerary = []; }
+  }
+
+  // Switch to destination tab
+  document.querySelector('[data-tab="destinations"]').click();
+  // Open the plan preferences modal pre-filled with this plan's exact data
+  openPlanTripModal(destId, plannerConfig);
+
+  showToast(`Continuing plan: "${plan.title}". Adjust your preferences or schedule anytime.`);
+}
+
+function confirmDeletePlan(planId) {
+  // Remove any existing confirm overlays
+  document.querySelectorAll('.plan-delete-confirm').forEach(el => el.remove());
+
+  // Find the card for this plan
+  const numId = Number(planId);
+  const card = document.querySelector(`[data-plan-id="${numId}"]`);
+  if (!card) {
+    // Fallback: try direct delete if card not found
+    doDeletePlan(planId);
+    return;
+  }
+
+  // Create inline confirm overlay on the card
+  const overlay = document.createElement('div');
+  overlay.className = 'plan-delete-confirm';
+  overlay.innerHTML = `
+    <div class="plan-delete-confirm-inner">
+      <p>🗑️ <strong>Delete this trip plan?</strong></p>
+      <p style="color:#64748b; font-size:13px; margin:4px 0 12px;">This cannot be undone.</p>
+      <div style="display:flex; gap:8px; justify-content:center;">
+        <button class="btn small" style="background:#ef4444; color:#fff; font-weight:700; border:none;" onclick="doDeletePlan(${numId})">Yes, Delete</button>
+        <button class="btn small secondary" onclick="this.closest('.plan-delete-confirm').remove()">Cancel</button>
+      </div>
+    </div>
+  `;
+  card.style.position = 'relative';
+  card.appendChild(overlay);
+}
+
+async function doDeletePlan(planId) {
+  // Remove confirm overlay if present
+  document.querySelectorAll('.plan-delete-confirm').forEach(el => el.remove());
+
+  const numId = Number(planId);
+
+  try {
+    const res = await fetch(`${API_BASE}/planned-trips/${numId}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!data.success) console.warn('Server delete response:', data);
+  } catch (err) {
+    console.warn('Failed to delete on server:', err);
+  }
+
+  // Use Number() coercion to handle string vs number ID mismatch from JSON/localStorage
+  savedPlans = savedPlans.filter(p => Number(p.id) !== numId);
+  localStorage.setItem(getPlansStorageKey(), JSON.stringify(savedPlans)); // scoped per user
+
+  if (Number(activePlanId) === numId) {
+    activePlanId = null;
+    const btn = document.getElementById('btnSaveTripPlan');
+    if (btn) btn.innerHTML = `💾 Save This Planned Trip`;
+  }
+
+  updateSavedPlansUI();
+  showToast('Trip plan deleted.');
+}
+
+// Keep old name as alias for backward compatibility
+async function deleteSavedPlan(planId) {
+  confirmDeletePlan(planId);
+}
+
+function syncPlanToBudget(planId) {
+  const plan = savedPlans.find(p => Number(p.id) === Number(planId));
+  if (!plan) return;
+
+  document.getElementById('totalBudget').value = plan.budget || 15000;
+  document.getElementById('expActivities').value = plan.activity_cost || 3000;
+  
+  const remaining = Math.max(0, (plan.budget || 15000) - (plan.activity_cost || 3000));
+  document.getElementById('expHotel').value = Math.round(remaining * 0.6);
+  document.getElementById('expTransport').value = Math.round(remaining * 0.4);
+
+  updateBudget();
+  document.querySelector('[data-tab="budget"]').click();
+  showToast(`Synced "${plan.title}" costs to Budget Calculator!`);
+}
+
+function showToast(msg) {
+  const existing = document.querySelector('.stp-toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = 'stp-toast';
+  toast.innerHTML = `<span>🧭</span> <div>${msg}</div>`;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(20px)';
+    toast.style.transition = 'all 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+

@@ -1224,9 +1224,12 @@
               <td><strong>${u.name}</strong></td>
               <td>${u.email}</td>
               <td>
+                ${u.plannedTrips && u.plannedTrips.length > 0 
+                  ? u.plannedTrips.map(p => `<div style="margin-bottom:3px;"><span class="badge-status pending" style="font-size:11px;">🧭 ${p.title} (${p.duration_days}D • ₹${p.budget})</span></div>`).join('') 
+                  : ''}
                 ${u.cart && u.cart.length > 0 
-                  ? u.cart.map(t => `<span class="badge-status approved" style="margin-right:4px; margin-bottom:4px;">${t.destination_name} (₹${t.price})</span>`).join('') 
-                  : '<span style="color:#94a3b8; font-size:12px;">Cart Empty</span>'}
+                  ? u.cart.map(t => `<span class="badge-status approved" style="margin-right:4px; margin-bottom:4px;">🎒 ${t.destination_name} (₹${t.price})</span>`).join('') 
+                  : (u.plannedTrips && u.plannedTrips.length > 0 ? '' : '<span style="color:#94a3b8; font-size:12px;">No active trips</span>')}
               </td>
               <td style="font-size:12px; color:#64748b;">${new Date(u.created_at).toLocaleDateString('en-IN')}</td>
             </tr>

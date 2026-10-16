@@ -354,10 +354,20 @@ const SESSION_KEY = "stp_session";
 
 let tripCart = [];
 let activeCategory = 'all';
+let plannerConfig = null;
+let currentItinerary = [];
+let savedPlans = [];
+let activePlanId = null;
+let activePlanFilter = 'all';
 
 // Load trip cart from MySQL DB for logged-in user
 async function loadCartFromDB() {
-  if (!currentUser) { tripCart = []; return; }
+  if (!currentUser) { 
+    tripCart = []; 
+    updateCartUI();
+    renderDestinations();
+    return; 
+  }
   try {
     const res = await fetch(`${API_BASE}/trips/${currentUser.id}`);
     const data = await res.json();
@@ -391,14 +401,36 @@ document.querySelectorAll('#tabNav button').forEach(btn => {
     if (target) target.classList.add('active');
 
     if (btn.dataset.tab === 'mapweather') {
+      renderMapDestStrip();
+      // Use multiple staggered invalidateSize calls to ensure tiles render
+      // after CSS transitions and layout paint
       setTimeout(() => {
-        if (leafletMap) {
-          leafletMap.remove();
-          leafletMap = null;
+        if (typeof L !== 'undefined') {
+          if (!leafletMap) {
+            // First time opening the map tab — panel is now visible, safe to init
+            loadMapWeather();
+            // Multiple invalidateSize calls to catch all timing issues
+            [200, 500, 1000, 2000].forEach(delay => {
+              setTimeout(() => {
+                if (leafletMap) {
+                  leafletMap.invalidateSize(true);
+                }
+              }, delay);
+            });
+          } else {
+            // Map already initialised — fix tile rendering after CSS transition
+            [100, 400, 800].forEach(delay => {
+              setTimeout(() => {
+                leafletMap.invalidateSize(true);
+              }, delay);
+            });
+          }
+        } else {
+          console.error('Leaflet library (L) failed to load.');
+          const loading = document.getElementById('weatherLoading');
+          if (loading) loading.textContent = 'Map library is loading...';
         }
-        loadMapWeather();
-        addAllMarkersToMap();
-      }, 0);
+      }, 50);
     }
 
     // Scroll smoothly to top of main content
@@ -408,12 +440,18 @@ document.querySelectorAll('#tabNav button').forEach(btn => {
 
 // ---------------- Authentication State ----------------
 function logoutUser() {
+  // Wipe in-memory plan state BEFORE switching user so old plans never show
+  savedPlans = [];
+  activePlanId = null;
+  updateSavedPlansUI();
+
   currentUser = null;
   localStorage.removeItem(SESSION_KEY);
   tripCart = [];
   updateCartUI();
   renderDestinations();
   renderAuthState();
+  loadSavedPlansFromStorage(); // will load empty guest plans
   // Clear badge
   const badge = document.getElementById('cartCountBadge');
   if (badge) badge.textContent = '0';
@@ -466,6 +504,7 @@ function renderAuthState() {
   }
   renderAuthState();
   loadCartFromDB(); // Load cart from MySQL
+  loadSavedPlansFromStorage(); // Load saved trip plans from MySQL/LocalStorage
 })();
 
 // ---------------- Trip Cart Drawer Functionality ----------------
@@ -593,13 +632,15 @@ function updateCartUI() {
   list.innerHTML = tripCart.map(item => {
     totalCost += item.price;
     return `
-      <div class="cart-item">
+      <div class="cart-item" style="${item.status ? 'border: 2px solid #10b981; background: #f0fdf4;' : ''}">
         <div class="cart-item-thumb" style="background-image:url('${item.img}')"></div>
         <div class="cart-item-details">
           <h4>${item.name}</h4>
-          <p>${item.duration} • ₹${item.price.toLocaleString()}</p>
+          <p>${item.duration || 'Custom Trip'} • ₹${item.price.toLocaleString()}</p>
+          ${item.status ? `<div style="margin-top: 6px; font-size: 12px; font-weight: 700; color: #10b981;">✅ ${item.status}</div>` : ''}
+          ${item.description ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;">${item.description}</div>` : ''}
         </div>
-        <button class="btn-close-drawer" style="background:#fee2e2; color:#ef4444; width:26px; height:26px;" onclick="toggleTripCart(${item.id})">✕</button>
+        ${!item.status ? `<button class="btn-close-drawer" style="background:#fee2e2; color:#ef4444; width:26px; height:26px;" onclick="toggleTripCart(${item.id})">✕</button>` : ''}
       </div>
     `;
   }).join('');
@@ -624,15 +665,13 @@ function syncBudgetFromCart() {
   tripCart.forEach(item => totalEstimated += item.price);
 
   // Set realistic category breakdown
-  const hotel = Math.round(totalEstimated * 0.40);
+  const hotel = Math.round(totalEstimated * 0.50);
   const transport = Math.round(totalEstimated * 0.30);
-  const food = Math.round(totalEstimated * 0.18);
-  const activities = Math.round(totalEstimated * 0.12);
+  const activities = Math.round(totalEstimated * 0.20);
 
   document.getElementById('totalBudget').value = totalEstimated;
   document.getElementById('expHotel').value = hotel;
   document.getElementById('expTransport').value = transport;
-  document.getElementById('expFood').value = food;
   document.getElementById('expActivities').value = activities;
 
   updateBudget();
@@ -688,7 +727,7 @@ function renderDestinationsList(list) {
   container.innerHTML = list.map(d => {
     const inCart = isInCart(d.id);
     return `
-      <div class="dest-card" onclick="openDestDetail(${d.id})">
+      <div class="dest-card" style="cursor: pointer;" onclick="proceedToHotels(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.price})">
         <div class="card-img-wrap">
           <img class="dest-img" src="${d.img}" alt="${d.name} destination">
           <span class="badge-category">${d.category}</span>
@@ -701,16 +740,22 @@ function renderDestinationsList(list) {
           </div>
           <div style="font-size:11.5px; color:var(--blue); font-weight:700; margin-bottom:4px;">⏱️ ${d.duration}</div>
           <p class="dest-desc">${d.desc}</p>
-          <div class="card-footer">
-            <div class="price-block">
-              <span class="price-label">Starts at</span>
-              <span class="price-amount">₹${d.price.toLocaleString()}</span>
+          <div class="card-footer" style="flex-direction: column; align-items: stretch; gap: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <div class="price-block">
+                <span class="price-label">Starts at</span>
+                <span class="price-amount">₹${d.price.toLocaleString()}</span>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn" style="padding: 6px 10px; font-size: 11px;" onclick="event.stopPropagation(); openDestDetail(${d.id})">ℹ️ Details</button>
+                <button class="btn-add-trip ${inCart ? 'added' : ''}" onclick="toggleTripCart(${d.id}, event)">
+                  ${inCart ? '✓ Added' : '+ Add'}
+                </button>
+              </div>
             </div>
-            <div class="card-actions">
-              <button class="btn-add-trip ${inCart ? 'added' : ''}" onclick="toggleTripCart(${d.id}, event)">
-                ${inCart ? '✓ Added' : '+ Add to Trip'}
-              </button>
-            </div>
+            <button class="btn accent" style="width: 100%; padding: 10px 14px; font-weight: 700; font-size: 13.5px;" onclick="event.stopPropagation(); proceedToHotels(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.price})">
+              🏨 Select &amp; View Hotels in ${d.name} →
+            </button>
           </div>
         </div>
       </div>
@@ -770,6 +815,7 @@ function openDestDetail(id) {
     </div>
 
     <div style="display:flex; gap:12px; margin-top:24px; flex-wrap:wrap;">
+      <button class="btn accent" style="box-shadow: 0 4px 14px rgba(224, 86, 56, 0.4);" onclick="proceedToHotels(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.price})">🏨 View Hotels in ${d.name}</button>
       <button class="btn" onclick="selectDestinationForMapWeather(${d.id})">🗺️ View on Map & Weather Forecast</button>
       <button class="btn secondary" onclick="planForDestination('${d.name}', ${d.price})">💰 Calculate Detailed Budget</button>
     </div>
@@ -787,16 +833,21 @@ function closeDestDetail() {
 
 function selectDestinationForMapWeather(destId) {
   mwSelect.value = destId;
-  loadMapWeather();
-  document.querySelector('[data-tab="mapweather"]').click();
+  // Click the nav tab — this triggers loadMapWeather() only after the panel is visible
+  const mapTab = document.querySelector('[data-tab="mapweather"]');
+  if (mapTab) {
+    mapTab.click();
+  } else {
+    // Fallback: panel already visible
+    loadMapWeather();
+  }
 }
 
 function planForDestination(name, price) {
   document.getElementById('totalBudget').value = price;
-  document.getElementById('expHotel').value = Math.round(price * 0.4);
+  document.getElementById('expHotel').value = Math.round(price * 0.5);
   document.getElementById('expTransport').value = Math.round(price * 0.3);
-  document.getElementById('expFood').value = Math.round(price * 0.18);
-  document.getElementById('expActivities').value = Math.round(price * 0.12);
+  document.getElementById('expActivities').value = Math.round(price * 0.2);
   updateBudget();
   document.querySelector('[data-tab="budget"]').click();
 }
@@ -806,18 +857,21 @@ function updateBudget() {
   const total = parseFloat(document.getElementById('totalBudget').value) || 0;
   const hotel = parseFloat(document.getElementById('expHotel').value) || 0;
   const transport = parseFloat(document.getElementById('expTransport').value) || 0;
-  const food = parseFloat(document.getElementById('expFood').value) || 0;
   const activities = parseFloat(document.getElementById('expActivities').value) || 0;
-  const spend = hotel + transport + food + activities;
+  const spend = hotel + transport + activities;
   const balance = total - spend;
 
   document.getElementById('spendLabel').textContent = '₹' + spend.toLocaleString();
   document.getElementById('budgetLabel').textContent = '₹' + total.toLocaleString();
 
   const balanceLabel = document.getElementById('balanceLabel');
+  const balanceText = document.getElementById('balanceText');
   if (balanceLabel) {
     balanceLabel.textContent = '₹' + Math.abs(balance).toLocaleString();
     balanceLabel.style.color = balance >= 0 ? '#34d399' : '#ef4444';
+  }
+  if (balanceText) {
+    balanceText.textContent = balance >= 0 ? 'Remaining Balance' : 'Over Budget Amount';
   }
 
   const pct = total > 0 ? Math.min((spend / total) * 100, 100) : 0;
@@ -836,16 +890,15 @@ function updateBudget() {
     statusEl.textContent = '💡 Enter a target trip budget above to track your spending.';
   } else if (spend > total) {
     statusEl.className = 'msg show error';
-    statusEl.textContent = `⚠ Warning: You have exceeded your target budget by ₹${(spend - total).toLocaleString()}. Consider adjusting hotel or transit expenses.`;
+    statusEl.textContent = `⚠️ Your selected trip is ₹${(spend - total).toLocaleString()} over your budget.`;
   } else {
     statusEl.className = 'msg show success';
     statusEl.textContent = `✓ Great planning! You are within your budget with ₹${(total - spend).toLocaleString()} left for spontaneous adventures.`;
   }
 
   const rows = [
-    ['🏨 Accommodation (Hotels/Resorts)', hotel],
+    ['🏨 Accommodation (Hotels/Resorts & Food)', hotel],
     ['🚗 Transit & Flights', transport],
-    ['🍽️ Food & Fine Dining', food],
     ['🎟️ Sightseeing & Local Activities', activities],
   ];
   document.getElementById('budgetTableBody').innerHTML = rows.map(([cat, amt]) => `
@@ -901,21 +954,201 @@ let poiVisible = true;    // Toggle state for POI layer
 let currentMapDestId = null;
 
 function initLeafletMap(d) {
-  if (!leafletMap) {
-    leafletMap = L.map('leafletMap', {
-      center: [d.lat, d.lon],
-      zoom: 11,
-      zoomControl: true,
-      scrollWheelZoom: true
-    });
+  if (!d) return;
+  const lat = parseFloat(d.lat) || 15.2993;
+  const lon = parseFloat(d.lon) || 74.1240;
+  d.lat = lat;
+  d.lon = lon;
 
-    // Add tile layer — free OpenStreetMap tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19
-    }).addTo(leafletMap);
+  const mapContainer = document.getElementById('leafletMap');
+  if (!mapContainer || typeof L === 'undefined') return;
+
+  if (!leafletMap) {
+    if (mapContainer._leaflet_id) {
+      delete mapContainer._leaflet_id;
+    }
+    try {
+      leafletMap = L.map('leafletMap', {
+        center: [lat, lon],
+        zoom: 11,
+        zoomControl: true,
+        scrollWheelZoom: true
+      });
+
+      // Create a custom canvas tile layer that works 100% offline
+      // Generates realistic, beautiful map-style tiles locally
+      const CanvasTileLayer = L.GridLayer.extend({
+        createTile: function(coords) {
+          const tile = document.createElement('canvas');
+          const size = this.getTileSize();
+          tile.width = size.x;
+          tile.height = size.y;
+          const ctx = tile.getContext('2d');
+          const z = coords.z;
+          const tx = coords.x;
+          const ty = coords.y;
+
+          // Seed-based pseudo-random for consistent tile appearance
+          const seed = tx * 1000003 + ty * 999983 + z * 997;
+          const rng = (n) => (Math.sin(seed + n) * 0.5 + 0.5);
+
+          // ── Land background gradient ──
+          const grad = ctx.createLinearGradient(0, 0, size.x, size.y);
+          grad.addColorStop(0, '#e9eff5');
+          grad.addColorStop(1, '#dfe8f0');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, size.x, size.y);
+
+          // ── Water bodies (rivers/lakes) ──
+          const hasWater = rng(1) > 0.55;
+          if (hasWater) {
+            ctx.save();
+            const wGrad = ctx.createLinearGradient(0, size.y * rng(2), size.x, size.y * rng(3));
+            wGrad.addColorStop(0, '#b8d4e8');
+            wGrad.addColorStop(1, '#c8dff0');
+            ctx.fillStyle = wGrad;
+            ctx.beginPath();
+            const wy = size.y * (0.3 + rng(4) * 0.4);
+            const wh = 12 + rng(5) * 30;
+            ctx.moveTo(0, wy);
+            ctx.bezierCurveTo(
+              size.x * 0.3, wy - 15 + rng(6) * 30,
+              size.x * 0.7, wy + 10 - rng(7) * 20,
+              size.x, wy + rng(8) * 12
+            );
+            ctx.lineTo(size.x, wy + wh + rng(9) * 10);
+            ctx.bezierCurveTo(
+              size.x * 0.7, wy + wh + 15 - rng(10) * 25,
+              size.x * 0.3, wy + wh - 10 + rng(11) * 15,
+              0, wy + wh
+            );
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // ── Green parks / vegetation patches ──
+          const numParks = Math.floor(rng(12) * 3);
+          for (let p = 0; p < numParks; p++) {
+            const px = rng(13 + p * 7) * size.x;
+            const py = rng(14 + p * 7) * size.y;
+            const pw = 30 + rng(15 + p * 7) * 60;
+            const ph = 20 + rng(16 + p * 7) * 40;
+            ctx.save();
+            ctx.fillStyle = `rgba(${180 + Math.floor(rng(17+p)*20)}, ${210 + Math.floor(rng(18+p)*20)}, ${170 + Math.floor(rng(19+p)*20)}, 0.7)`;
+            ctx.beginPath();
+            ctx.ellipse(px, py, pw / 2, ph / 2, rng(20 + p) * Math.PI, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+
+          // ── City blocks (beige/cream rectangles) ──
+          if (z >= 10) {
+            const blockCount = Math.floor(rng(21) * 5) + 3;
+            for (let b = 0; b < blockCount; b++) {
+              const bx = rng(22 + b * 5) * size.x;
+              const by = rng(23 + b * 5) * size.y;
+              const bw = 15 + rng(24 + b * 5) * 35;
+              const bh = 10 + rng(25 + b * 5) * 25;
+              ctx.fillStyle = `rgba(245, 238, 220, ${0.5 + rng(26 + b) * 0.4})`;
+              ctx.fillRect(bx, by, bw, bh);
+              ctx.strokeStyle = 'rgba(200, 185, 155, 0.6)';
+              ctx.lineWidth = 0.5;
+              ctx.strokeRect(bx, by, bw, bh);
+            }
+          }
+
+          // ── Secondary roads (thin, light) ──
+          const roadStep = Math.max(16, Math.floor(200 / Math.pow(1.5, Math.max(0, z - 8))));
+          ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+          ctx.lineWidth = z > 11 ? 1.5 : 0.8;
+          for (let x = roadStep / 2; x < size.x; x += roadStep) {
+            ctx.beginPath();
+            const bend = (rng(30 + x) - 0.5) * 20;
+            ctx.moveTo(x + bend, 0);
+            ctx.bezierCurveTo(x - bend * 0.5, size.y * 0.3, x + bend * 0.3, size.y * 0.7, x - bend, size.y);
+            ctx.stroke();
+          }
+          for (let y = roadStep / 2; y < size.y; y += roadStep) {
+            ctx.beginPath();
+            const bend = (rng(31 + y) - 0.5) * 20;
+            ctx.moveTo(0, y + bend);
+            ctx.bezierCurveTo(size.x * 0.3, y - bend * 0.5, size.x * 0.7, y + bend * 0.3, size.x, y - bend);
+            ctx.stroke();
+          }
+
+          // ── Major roads / highways (thicker, yellow-white) ──
+          const majorStep = roadStep * 3;
+          ctx.strokeStyle = 'rgba(255,245,200,0.9)';
+          ctx.lineWidth = z > 11 ? 3 : 1.5;
+          for (let x = majorStep; x < size.x; x += majorStep) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, size.y);
+            ctx.stroke();
+          }
+          for (let y = majorStep; y < size.y; y += majorStep) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(size.x, y);
+            ctx.stroke();
+          }
+
+          // ── Diagonal highway ──
+          if (rng(32) > 0.6) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 235, 150, 0.85)';
+            ctx.lineWidth = z > 11 ? 2.5 : 1.5;
+            ctx.beginPath();
+            ctx.moveTo(0, rng(33) * size.y);
+            ctx.lineTo(size.x, rng(34) * size.y);
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          // ── Subtle vignette to distinguish tiles ──
+          const vGrad = ctx.createRadialGradient(
+            size.x / 2, size.y / 2, size.x * 0.3,
+            size.x / 2, size.y / 2, size.x * 0.8
+          );
+          vGrad.addColorStop(0, 'rgba(0,0,0,0)');
+          vGrad.addColorStop(1, 'rgba(0,0,0,0.04)');
+          ctx.fillStyle = vGrad;
+          ctx.fillRect(0, 0, size.x, size.y);
+
+          return tile;
+        }
+      });
+
+      // Add the canvas tile layer (always works offline)
+      new CanvasTileLayer({
+        attribution: '🗺️ Smart Travel Planner — Interactive Map',
+        tileSize: 256,
+        minZoom: 1,
+        maxZoom: 20
+      }).addTo(leafletMap);
+
+      // Also attempt to load OSM tiles on top (they'll appear if internet is available)
+      const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+        opacity: 0
+      });
+      osmLayer.addTo(leafletMap);
+      // If OSM tiles load successfully, show them
+      let osmTilesLoaded = 0;
+      osmLayer.on('tileload', function() {
+        osmTilesLoaded++;
+        if (osmTilesLoaded === 1) {
+          osmLayer.setOpacity(1);
+        }
+      });
+    } catch (err) {
+      console.warn('Map initialization warning:', err);
+      return;
+    }
   } else {
-    leafletMap.setView([d.lat, d.lon], 11);
+    leafletMap.setView([lat, lon], 11);
   }
 
   // Clear old markers
@@ -979,12 +1212,20 @@ function initLeafletMap(d) {
 
 // ---- Tourist POI Markers ----
 function addPOIMarkersToMap(destId) {
+  if (!leafletMap) return;
   // Remove existing POI markers
   poiMarkers.forEach(m => leafletMap.removeLayer(m));
   poiMarkers = [];
 
-  const pois = touristPOIs[destId];
-  if (!pois || !leafletMap) return;
+  const dest = destinations.find(x => x.id == destId);
+  const baseLat = (dest && dest.lat) ? dest.lat : 15.2993;
+  const baseLon = (dest && dest.lon) ? dest.lon : 74.1240;
+
+  const pois = touristPOIs[destId] || [
+    { name: (dest ? dest.name : 'Local') + " Center & Market", lat: baseLat + 0.012, lon: baseLon + 0.010, type: "market", desc: "Local shopping, souvenirs and authentic street cuisine." },
+    { name: (dest ? dest.name : 'Scenic') + " Viewpoint & Ridge", lat: baseLat - 0.014, lon: baseLon - 0.011, type: "nature", desc: "Breathtaking panoramic scenic spot popular for photography." },
+    { name: (dest ? dest.name : 'Heritage') + " Monument", lat: baseLat + 0.008, lon: baseLon - 0.016, type: "fort", desc: "Iconic historic attraction and cultural architecture." }
+  ];
 
   pois.forEach(poi => {
     const cfg = POI_TYPE_CONFIG[poi.type] || { color: '#64748b', emoji: '📍', label: 'Place' };
@@ -1071,14 +1312,36 @@ function addPOIMarkersToMap(destId) {
   renderPlacesList(destId);
 
   // Keep the destination and all famous places inside the visible map area.
-  const destination = destinations.find(item => item.id === destId);
-  if (destination) {
-    const bounds = L.latLngBounds([
-      [destination.lat, destination.lon],
-      ...pois.map(poi => [poi.lat, poi.lon])
-    ]);
-    leafletMap.fitBounds(bounds, { padding: [36, 36], maxZoom: 11 });
+  const destination = destinations.find(item => item.id == destId);
+  if (destination && leafletMap) {
+    const points = [[destination.lat, destination.lon]];
+    pois.forEach(p => { if (p.lat && p.lon) points.push([p.lat, p.lon]); });
+    const bounds = L.latLngBounds(points);
+    leafletMap.fitBounds(bounds, { padding: [36, 36], maxZoom: 12 });
   }
+}
+
+// Overview destination markers
+let allDestMarkers = [];
+function addAllMarkersToMap() {
+  if (!leafletMap || typeof L === 'undefined') return;
+  allDestMarkers.forEach(m => leafletMap.removeLayer(m));
+  allDestMarkers = [];
+
+  destinations.forEach(d => {
+    if (currentMapDest && d.id === currentMapDest.id) return; // Don't duplicate main active destination marker
+    const miniIcon = L.divIcon({
+      className: '',
+      html: `<div style="background:#0a2540;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);cursor:pointer;" title="${d.name}">${d.name.charAt(0)}</div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
+    });
+    const m = L.marker([d.lat, d.lon], { icon: miniIcon });
+    m.bindTooltip(`<strong>${d.name}</strong><br><span style="font-size:11px; color:#64748b;">Click to view</span>`, { permanent: false, direction: 'top' });
+    m.on('click', () => selectMapDest(d.id));
+    m.addTo(leafletMap);
+    allDestMarkers.push(m);
+  });
 }
 
 function renderPOILegend(destId) {
@@ -1190,8 +1453,15 @@ const ROUTE_MODES = {
 
 // ---- Places List Panel ----
 function renderPlacesList(destId) {
-  const pois = touristPOIs[destId];
-  const dest = destinations.find(x => x.id === destId);
+  const dest = destinations.find(x => x.id == destId);
+  const baseLat = (dest && dest.lat) ? dest.lat : 15.2993;
+  const baseLon = (dest && dest.lon) ? dest.lon : 74.1240;
+
+  const pois = touristPOIs[destId] || [
+    { name: (dest ? dest.name : 'Local') + " Center & Market", lat: baseLat + 0.012, lon: baseLon + 0.010, type: "market", desc: "Local shopping, souvenirs and authentic street cuisine." },
+    { name: (dest ? dest.name : 'Scenic') + " Viewpoint & Ridge", lat: baseLat - 0.014, lon: baseLon - 0.011, type: "nature", desc: "Breathtaking panoramic scenic spot popular for photography." },
+    { name: (dest ? dest.name : 'Heritage') + " Monument", lat: baseLat + 0.008, lon: baseLon - 0.016, type: "fort", desc: "Iconic historic attraction and cultural architecture." }
+  ];
   const listEl = document.getElementById('placesList');
   const countEl = document.getElementById('placesPanelCount');
   const destNameEl = document.getElementById('placesPanelDestName');
@@ -1201,9 +1471,25 @@ function renderPlacesList(destId) {
   if (!pois || !listEl) return;
 
   if (countEl) countEl.textContent = `${pois.length} places`;
+  
+  const getIdealTime = (type) => {
+    switch(type) {
+      case 'beach': return 'Ideal Time: 4:00 PM - 6:30 PM (Sunset)';
+      case 'temple': return 'Ideal Time: 6:00 AM - 10:00 AM (Morning)';
+      case 'market': return 'Ideal Time: 5:00 PM - 9:00 PM (Evening)';
+      case 'nature': return 'Ideal Time: 7:00 AM - 11:00 AM (Morning)';
+      case 'fort': return 'Ideal Time: 9:00 AM - 1:00 PM (Day)';
+      case 'adventure': return 'Ideal Time: 10:00 AM - 3:00 PM (Day)';
+      case 'hotel':
+      case 'hostel': return 'Standard Check-in: 2:00 PM';
+      default: return 'Ideal Time: Flexible';
+    }
+  };
 
   listEl.innerHTML = pois.map((poi, idx) => {
     const cfg = POI_TYPE_CONFIG[poi.type] || { color: '#64748b', emoji: '📍', label: 'Place' };
+    const idealTime = getIdealTime(poi.type);
+    
     return `
       <div class="place-card" onclick="focusOnPOI(${poi.lat}, ${poi.lon})" title="Click to zoom to this place on the map">
         <div class="place-card-icon" style="background:${cfg.color};">${cfg.emoji}</div>
@@ -1211,6 +1497,7 @@ function renderPlacesList(destId) {
           <div class="place-card-name">${poi.name}</div>
           <div class="place-card-meta">
             <span class="place-card-type" style="background:${cfg.color}18;color:${cfg.color};border:1px solid ${cfg.color}40;">${cfg.label}</span>
+            <span style="font-size:11px; font-weight:600; color:var(--muted); margin-left:8px;">${idealTime}</span>
           </div>
           <div class="place-card-desc">${poi.desc}</div>
         </div>
@@ -1235,6 +1522,13 @@ function focusOnPOI(lat, lon) {
 
 function loadMapWeather() {
   const d = destinations.find(x => x.id == mwSelect.value) || destinations[0];
+  if (!d) return;
+
+  const lat = parseFloat(d.lat) || 15.2993;
+  const lon = parseFloat(d.lon) || 74.1240;
+  d.lat = lat;
+  d.lon = lon;
+
   currentMapDest = d;
   currentMapDestId = d.id;
 
@@ -1257,6 +1551,13 @@ function loadMapWeather() {
 
   // Update Leaflet map
   initLeafletMap(d);
+
+  // Invalidate map size after DOM settles so tiles render immediately
+  setTimeout(() => {
+    if (leafletMap) {
+      leafletMap.invalidateSize();
+    }
+  }, 250);
 
   // Update destination info box
   const infoBox = document.getElementById('destInfoBox');
@@ -1537,24 +1838,1480 @@ function addAllMarkersToMap() {
   });
 }
 
+// ---------------- Booking Modal Logic ----------------
+function openBookingModal() {
+  if (tripCart.length === 0) {
+    alert("Your trip cart is empty. Please add destinations before booking.");
+    return;
+  }
+  document.getElementById('bookingModalOverlay').classList.remove('hidden');
+  document.getElementById('bookingModal').classList.remove('hidden');
+  toggleCartDrawer(); // Close the cart drawer if it's open
+}
+
+function closeBookingModal() {
+  document.getElementById('bookingModalOverlay').classList.add('hidden');
+  document.getElementById('bookingModal').classList.add('hidden');
+}
+
+async function handleBookingSubmit(event) {
+  event.preventDefault();
+  
+  const name = document.getElementById('bookName').value;
+  const email = document.getElementById('bookEmail')?.value || (currentUser && currentUser.email) || 'customer@example.com';
+  const phone = document.getElementById('bookPhone').value;
+  const address = document.getElementById('bookAddress').value;
+  
+  if (!name || !phone || !address) {
+    alert("Please fill in all the details.");
+    return;
+  }
+
+  const totalPaid = parseFloat(document.getElementById('totalBudget').value) || 0;
+  const now = new Date();
+  const receiptNo = 'STP-' + now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2) + '-' + Math.floor(Math.random()*9000+1000);
+  
+  window._lastBookingReceiptNo = receiptNo;
+  window._lastBookingEmail = email;
+
+  // Add paid trip to cart
+  const bookedTrip = {
+    id: window.currentTrip.destId || Date.now(),
+    name: window.currentTrip.destName || 'Custom Trip',
+    price: totalPaid,
+    status: 'Payment Completed (Pending Admin Review)',
+    description: `Includes ${window.currentTrip.hotelName || 'Hotel'} & ${window.currentTrip.transportName || 'Transport'}`,
+    img: destinations.find(d => d.id === window.currentTrip.destId)?.img || 'assets/goa.jpg'
+  };
+  
+  tripCart.unshift(bookedTrip);
+  updateCartUI();
+  
+  closeBookingModal();
+
+  // Send booking to database & trigger customer email
+  try {
+    const res = await fetch(`${API_BASE}/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentUser ? currentUser.id : null,
+        customerName: name,
+        customerEmail: email,
+        customerPhone: phone,
+        customerAddress: address,
+        destinationId: window.currentTrip.destId || 1,
+        destinationName: window.currentTrip.destName || 'Goa',
+        hotelName: window.currentTrip.hotelName || 'Selected Hotel',
+        hotelPrice: window.currentTrip.hotelPrice || 0,
+        transportName: window.currentTrip.transportName || 'Selected Transit',
+        transportPrice: window.currentTrip.transportPrice || 0,
+        totalPrice: totalPaid,
+        receiptNo: receiptNo
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert(`🎉 Trip Plan Successfully Submitted!\n\n📨 A confirmation email notification has been dispatched to ${email}.\nYour trip is now awaiting Admin review and approval in the Admin Portal.`);
+    }
+  } catch (err) {
+    console.warn('Booking API offline fallback:', err);
+  }
+
+  // Stay on budget tab and show the receipt
+  document.querySelector('[data-tab="budget"]').click();
+  setTimeout(() => {
+    generateTripReceipt();
+  }, 300);
+}
+
+async function fetchAdminCustomDestinations() {
+  try {
+    const res = await fetch(`${API_BASE}/admin/destinations`);
+    const data = await res.json();
+    if (data.success && data.destinations && data.destinations.length > 0) {
+      data.destinations.forEach(cd => {
+        if (!destinations.some(d => d.name.toLowerCase() === cd.name.toLowerCase())) {
+          let lat = parseFloat(cd.lat);
+          let lon = parseFloat(cd.lon);
+          if (isNaN(lat) || isNaN(lon)) {
+            const lower = cd.name.toLowerCase();
+            if (lower.includes('ooty')) { lat = 11.4102; lon = 76.6950; }
+            else if (lower.includes('agra')) { lat = 27.1767; lon = 78.0081; }
+            else if (lower.includes('varanasi')) { lat = 25.3176; lon = 82.9739; }
+            else if (lower.includes('darjeeling')) { lat = 27.0410; lon = 88.2663; }
+            else if (lower.includes('coorg')) { lat = 12.3375; lon = 75.8069; }
+            else { lat = 20.5937; lon = 78.9629; }
+          }
+
+          destinations.unshift({
+            id: cd.id,
+            name: cd.name,
+            category: cd.category,
+            season: cd.season,
+            price: cd.price,
+            duration: cd.duration,
+            lat: lat,
+            lon: lon,
+            rating: parseFloat(cd.rating) || 4.8,
+            reviews: cd.reviews || 120,
+            desc: cd.description || 'Exclusive custom travel package designed by our travel planners.',
+            attractions: cd.attractions ? cd.attractions.split(',').map(s => s.trim()) : [cd.name + ' Highlights'],
+            img: cd.image_url || 'assets/goa.jpg'
+          });
+        }
+      });
+      renderDestinations();
+      if (mwSelect) {
+        mwSelect.innerHTML = destinations.map(d =>
+          `<option value="${d.id}">${d.name} (${d.category})</option>`
+        ).join('');
+      }
+      renderMapDestStrip();
+    }
+  } catch (err) {
+    console.warn('Failed to load admin custom destinations:', err);
+  }
+}
+
 // ---------------- App Initializer ----------------
 document.addEventListener('DOMContentLoaded', () => {
   renderDestinations();
+  fetchAdminCustomDestinations();
   renderMapDestStrip();
   updateCartUI();
   updateBudget();
+  renderTransportList();
   
-  // Wait a tiny bit to ensure Leaflet is fully parsed by the browser if loaded async
-  setTimeout(() => {
-    if (typeof L !== 'undefined') {
-      loadMapWeather();
-      // Once map is ready, add overview markers for all destinations
-      setTimeout(() => {
-        if (leafletMap) addAllMarkersToMap();
-      }, 800);
-    } else {
-      console.error('Leaflet library (L) failed to load from CDN.');
-      document.getElementById('weatherLoading').textContent = 'Error: Map library failed to load. Please check your internet connection.';
-    }
-  }, 100);
+  if (typeof L === 'undefined') {
+    console.error('Leaflet library (L) failed to load from CDN.');
+  }
 });
+
+// ---------------- MODULE 5: HOTELS ----------------
+const hotelsData = [];
+
+// Extract hotels from touristPOIs to populate hotelsData
+const realHotelImages = {
+  hotel: ['assets/hotel_premium.jpg?v=2', 'assets/hotel_heritage.jpg?v=2'],
+  hostel: ['assets/hostel_vibe.jpg?v=2']
+};
+
+Object.keys(touristPOIs).forEach(destId => {
+  const destHotels = touristPOIs[destId].filter(poi => poi.type === 'hotel' || poi.type === 'hostel');
+  const destName = destinations.find(d => d.id == destId)?.name || '';
+  
+  const transports = ['Local Bus Stand (2km)', 'Railway Station (5km)', 'Airport (15km)', 'Taxi Stand (1km)'];
+  
+  destHotels.forEach((hotel, idx) => {
+    let imgPool = realHotelImages[hotel.type] || realHotelImages.hotel;
+    hotelsData.push({
+      id: `hotel_${destId}_${Math.random().toString(36).substr(2, 9)}`,
+      destId: Number(destId),
+      name: hotel.name,
+      destination: destName,
+      type: hotel.type,
+      desc: hotel.desc,
+      lat: hotel.lat,
+      lon: hotel.lon,
+      price: Math.floor(Math.random() * (15000 - 1500) + 1500),
+      rating: (Math.random() * (5 - 3.5) + 3.5).toFixed(1),
+      img: imgPool[idx % imgPool.length],
+      transport: transports[idx % transports.length]
+    });
+  });
+});
+
+function filterHotels() {
+  const destSearch = (document.getElementById('hotelDestSearch').value || '').toLowerCase().trim();
+  const checkIn = document.getElementById('hotelCheckIn').value;
+  const checkOut = document.getElementById('hotelCheckOut').value;
+  
+  // Basic validation for dates
+  if (checkIn && checkOut && new Date(checkIn) >= new Date(checkOut)) {
+    console.log("Check-out date must be after Check-in date");
+  }
+
+  const filtered = hotelsData.filter(h => {
+    const matchesDest = !destSearch || h.destination.toLowerCase().includes(destSearch) || h.name.toLowerCase().includes(destSearch);
+    return matchesDest;
+  });
+
+  renderHotelsList(filtered);
+}
+
+function renderHotelsList(list) {
+  const container = document.getElementById('hotelList');
+  const countBadge = document.getElementById('hotelResultsCount');
+
+  if (countBadge) countBadge.textContent = `${list.length} hotel${list.length === 1 ? '' : 's'} found`;
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align:center; padding:50px 20px; background:white; border-radius:12px; border:1px solid var(--border);">
+        <div style="font-size:42px; margin-bottom:10px;">🏨</div>
+        <h3 style="margin:0 0 6px; color:var(--primary);">No hotels matched your search</h3>
+        <p style="margin:0; font-size:13.5px; color:var(--muted);">Try changing your destination or clear search filters.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = list.map(h => `
+    <div class="dest-card" style="cursor: pointer;" onclick="proceedToTransport('${h.name.replace(/'/g, "\\'")}', ${h.price}, ${h.destId}, '${h.destination.replace(/'/g, "\\'")}')">
+      <div class="card-img-wrap">
+        <img class="dest-img" src="${h.img}" alt="${h.name}">
+        <span class="badge-category">${h.type === 'hotel' ? 'Hotel' : 'Hostel'}</span>
+      </div>
+      <div class="dest-body">
+        <div class="card-top-row">
+          <h3 class="dest-name">${h.name}</h3>
+          <div class="card-rating">★ ${h.rating}</div>
+        </div>
+        <div style="font-size:12px; color:var(--muted); font-weight:700; margin-bottom:4px;">📍 ${h.destination}</div>
+        <div style="font-size:11px; color:#10b981; font-weight:700; margin-bottom:8px;">🚍 Nearby: ${h.transport}</div>
+        <p class="dest-desc">${h.desc}</p>
+        <div class="card-footer" style="flex-direction: column; align-items: stretch;">
+          <div style="font-size: 18px; font-weight: 800; color: var(--primary); margin-bottom: 12px;">
+            ₹${h.price.toLocaleString()} <span style="font-size: 12px; color: var(--muted); font-weight: 600;">/ total stay</span>
+          </div>
+          <div class="card-actions" style="display:flex; gap:8px; width: 100%;">
+            <button class="btn accent" style="padding: 12px 14px; width: 100%; font-weight: 700;" onclick="event.stopPropagation(); proceedToTransport('${h.name.replace(/'/g, "\\'")}', ${h.price}, ${h.destId}, '${h.destination.replace(/'/g, "\\'")}')">
+              Select &amp; Choose Transport →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function bookHotel(hotelName, price) {
+  // Open the UPI payment modal for this hotel
+  document.getElementById('bookingModalOverlay').classList.remove('hidden');
+  const modal = document.getElementById('bookingModal');
+  modal.classList.remove('hidden');
+  
+  // Optionally update modal text to show what is being booked
+  const headerText = modal.querySelector('h3');
+  if (headerText) {
+    headerText.textContent = `Book ${hotelName} (₹${price.toLocaleString()})`;
+  }
+}
+
+function addHotelToBudget(hotelPrice, hotelName) {
+  // Assume a 3-night stay by default for the budget
+  const stayCost = hotelPrice * 3;
+  
+  const currentTotal = parseFloat(document.getElementById('totalBudget').value) || 0;
+  const currentHotelExp = parseFloat(document.getElementById('expHotel').value) || 0;
+  
+  document.getElementById('expHotel').value = currentHotelExp + stayCost;
+  document.getElementById('totalBudget').value = currentTotal + stayCost;
+  
+  updateBudget();
+  
+  // Navigate to budget tab
+  document.querySelector('[data-tab="budget"]').click();
+  alert(`Added ₹${stayCost.toLocaleString()} (3 nights at ${hotelName}) to your Hotel & Stay expenses in the Budget Planner.`);
+}
+
+window.currentTrip = {
+  destId: null,
+  destName: '',
+  destPrice: 0,
+  hotelName: '',
+  hotelPrice: 0,
+  transportName: '',
+  transportPrice: 0
+};
+
+// ---------------- Booking Flow Progress Stepper ----------------
+function renderBookingProgress(activeStep) {
+  // activeStep: 1=Destination, 2=Hotels, 3=Transport, 4=Budget
+  const steps = [
+    { n: 1, label: 'Destination', icon: '✈️', tab: 'destinations' },
+    { n: 2, label: 'Hotels',      icon: '🏨', tab: 'hotels' },
+    { n: 3, label: 'Transport',   icon: '🚗', tab: 'transport' },
+    { n: 4, label: 'Budget',      icon: '💰', tab: 'budget' }
+  ];
+
+  const html = `
+    <div class="booking-progress">
+      <div class="booking-progress-inner">
+        ${steps.map((s, i) => {
+          const isDone   = s.n < activeStep;
+          const isActive = s.n === activeStep;
+          const cls = isDone ? 'step done' : isActive ? 'step active' : 'step';
+          return `
+            <div class="${cls}">
+              <div class="step-circle" ${isDone || isActive ? `onclick="switchToStep('${s.tab}')"` : ''}>
+                ${isDone ? '✓' : s.icon}
+              </div>
+              <span class="step-label">${s.label}</span>
+            </div>
+            ${i < steps.length - 1 ? `<div class="step-connector ${isDone ? 'done' : ''}"></div>` : ''}
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+
+  // Inject into any section that is currently active
+  ['destinations','hotels','transport','budget'].forEach(id => {
+    const sec = document.getElementById(id);
+    if (!sec) return;
+    const existing = sec.querySelector('.booking-progress');
+    if (existing) existing.remove();
+  });
+
+  const activeSection = document.getElementById(steps[activeStep-1].tab);
+  if (activeSection) {
+    activeSection.insertAdjacentHTML('afterbegin', html);
+  }
+}
+
+function switchToStep(tabId) {
+  const btn = document.querySelector(`[data-tab="${tabId}"]`);
+  if (btn) btn.click();
+}
+
+function proceedToHotels(destId, destName, destPrice) {
+  window.currentTrip.destId = destId;
+  window.currentTrip.destName = destName;
+  window.currentTrip.destPrice = destPrice;
+  
+  const searchInput = document.getElementById('hotelDestSearch');
+  if (searchInput) {
+    searchInput.value = destName;
+  }
+  
+  filterHotels();
+  document.querySelector('[data-tab="hotels"]').click();
+  setTimeout(() => renderBookingProgress(2), 50);
+}
+
+function proceedToTransport(hotelName, hotelPrice, destId, destName) {
+  // Update trip context from hotel card arguments
+  window.currentTrip.hotelName = hotelName;
+  window.currentTrip.hotelPrice = hotelPrice;
+  if (destId)  window.currentTrip.destId   = destId;
+  if (destName) window.currentTrip.destName = destName;
+
+  renderTransportList();
+  document.querySelector('[data-tab="transport"]').click();
+  setTimeout(() => renderBookingProgress(3), 50);
+}
+
+const transportOptions = [
+  { name: 'Premium Flight', price: 6500, icon: '✈️', desc: 'Fastest way to reach. Includes standard baggage.' },
+  { name: 'Express Train', price: 1800, icon: '🚂', desc: 'Comfortable AC sleeper class. Scenic route.' },
+  { name: 'Luxury AC Sleeper Bus', price: 2200, icon: '🚌', desc: 'Overnight journey with reclining seats and blankets.' },
+  { name: 'Private Outstation Cab', price: 8500, icon: '🚕', desc: 'Door-to-door pickup and drop off in an SUV.' }
+];
+
+function renderTransportList() {
+  const container = document.getElementById('transportList');
+  if (!container) return;
+  
+  const destName = window.currentTrip.destName || 'your destination';
+  
+  const destId = window.currentTrip.destId || 1;
+
+  // Base options with local assets
+  let dynamicTransportOptions = [
+    { type: 'flight', name: `Flight to ${destName}`, price: 6500, icon: '✈️', desc: `Fastest way to reach ${destName}. Includes standard baggage.`, img: 'assets/flight.jpg?v=2' },
+    { type: 'train', name: `Express Train to ${destName}`, price: 1800, icon: '🚂', desc: `Comfortable AC sleeper class journey to ${destName}.`, img: 'assets/train.jpg?v=2' },
+    { type: 'bus', name: `Luxury Bus to ${destName}`, price: 2200, icon: '🚌', desc: `Overnight journey to ${destName} with reclining seats.`, img: 'assets/bus.jpg?v=2' },
+    { type: 'cab', name: `Private Cab to ${destName}`, price: 8500, icon: '🚕', desc: `Door-to-door pickup and drop off to ${destName}.`, img: 'assets/cab.jpg?v=2' }
+  ];
+
+  // Filter based on destination id
+  if (destId === 2 || destId === 10 || destId === 11 || destId === 12) { // Manali, Munnar, Hampi, Jim Corbett (No flight)
+      dynamicTransportOptions = dynamicTransportOptions.filter(t => t.type !== 'flight');
+  }
+  if (destId === 2 || destId === 5 || destId === 7 || destId === 10) { // Manali, Ladakh, Andaman, Munnar (No train)
+      dynamicTransportOptions = dynamicTransportOptions.filter(t => t.type !== 'train');
+  }
+  if (destId === 7) { // Andaman Islands (No bus from mainland)
+      dynamicTransportOptions = dynamicTransportOptions.filter(t => t.type !== 'bus');
+  }
+
+  container.innerHTML = dynamicTransportOptions.map(t => `
+    <div class="dest-card transport-card" id="tcard-${t.type}" style="cursor: pointer;" onclick="proceedToBudget('${t.name.replace(/'/g, "\\'")}', ${t.price})">
+      <div class="transport-selected-badge">✓ Selected</div>
+      <img src="${t.img}" alt="${t.name}" style="width: 100%; height: 200px; object-fit: cover; border-top-left-radius: 16px; border-top-right-radius: 16px;">
+      <div class="dest-body" style="text-align: center; padding: 20px;">
+        <div style="font-size: 32px; margin-bottom: 8px;">${t.icon}</div>
+        <h3 class="dest-name" style="margin-bottom: 8px;">${t.name}</h3>
+        <p class="dest-desc" style="margin-bottom: 15px;">${t.desc}</p>
+        <div style="font-size: 20px; font-weight: 800; color: var(--primary); margin-bottom: 15px;">₹${t.price.toLocaleString()}</div>
+        <button class="btn accent" style="width: 100%; padding: 12px; font-weight: 700;" onclick="event.stopPropagation(); proceedToBudget('${t.name.replace(/'/g, "\\'")}', ${t.price})">
+          🎯 Book This &amp; View Budget →
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectTransportCard(cardEl, transportName, transportPrice) {
+  // Visual selection highlight
+  document.querySelectorAll('.transport-card').forEach(c => c.classList.remove('selected'));
+  cardEl.classList.add('selected');
+}
+
+function proceedToBudget(transportName, transportPrice) {
+  window.currentTrip.transportName = transportName;
+  window.currentTrip.transportPrice = transportPrice;
+
+  // Pre-fill budget tracker with all the selections
+  const dest       = destinations.find(d => d.id === window.currentTrip.destId);
+  const destPrice  = window.currentTrip.destPrice  || (dest ? dest.price : 0);
+  const hotelPrice = window.currentTrip.hotelPrice  || 0;
+  const transPrice = transportPrice || 0;
+  const activitiesEst = Math.round(destPrice * 0.15); // 15% for activities
+  const totalBudget = hotelPrice + transPrice + activitiesEst + Math.round(destPrice * 0.10); // + 10% buffer
+
+  document.getElementById('totalBudget').value    = totalBudget;
+  document.getElementById('expHotel').value       = hotelPrice;
+  document.getElementById('expTransport').value   = transPrice;
+  document.getElementById('expActivities').value  = activitiesEst;
+
+  // Show the budget selection summary header
+  renderBudgetSelectionSummary();
+
+  // Show confirm button
+  const confirmContainer = document.getElementById('budgetConfirmBtnContainer');
+  if (confirmContainer) confirmContainer.classList.remove('hidden');
+  const paymentIndicator = document.getElementById('paymentMethodIndicator');
+  if (paymentIndicator) paymentIndicator.classList.remove('hidden');
+
+  updateBudget();
+  document.querySelector('[data-tab="budget"]').click();
+  setTimeout(() => renderBookingProgress(4), 50);
+}
+
+function renderBudgetSelectionSummary() {
+  const trip = window.currentTrip;
+  if (!trip.destName) return;
+
+  const dest = destinations.find(d => d.id === trip.destId);
+
+  let existing = document.getElementById('budgetTripSummary');
+  if (!existing) {
+    existing = document.createElement('div');
+    existing.id = 'budgetTripSummary';
+    const budgetDash = document.querySelector('.budget-dashboard');
+    if (budgetDash) budgetDash.insertBefore(existing, budgetDash.firstChild.nextSibling);
+  }
+
+  existing.innerHTML = `
+    <div class="trip-summary-banner">
+      <div class="trip-summary-title">🎯 Your Trip Selection Summary</div>
+      <div class="trip-summary-grid">
+        <div class="trip-summary-item">
+          <span class="trip-summary-icon">✈️</span>
+          <div>
+            <div class="trip-summary-label">Destination</div>
+            <div class="trip-summary-value">${trip.destName}</div>
+            ${dest ? `<div class="trip-summary-sub">${dest.duration} · ${dest.season}</div>` : ''}
+          </div>
+        </div>
+        <div class="trip-summary-item">
+          <span class="trip-summary-icon">🏨</span>
+          <div>
+            <div class="trip-summary-label">Hotel / Stay</div>
+            <div class="trip-summary-value">${trip.hotelName || 'Not selected'}</div>
+            ${trip.hotelPrice ? `<div class="trip-summary-sub">₹${trip.hotelPrice.toLocaleString()} / stay</div>` : ''}
+          </div>
+        </div>
+        <div class="trip-summary-item">
+          <span class="trip-summary-icon">🚗</span>
+          <div>
+            <div class="trip-summary-label">Transport</div>
+            <div class="trip-summary-value">${trip.transportName || 'Not selected'}</div>
+            ${trip.transportPrice ? `<div class="trip-summary-sub">₹${trip.transportPrice.toLocaleString()}</div>` : ''}
+          </div>
+        </div>
+        <div class="trip-summary-item">
+          <span class="trip-summary-icon">💰</span>
+          <div>
+            <div class="trip-summary-label">Total Cost</div>
+            <div class="trip-summary-value" style="color:#10b981;">₹${((trip.hotelPrice||0)+(trip.transportPrice||0)+Math.round((trip.destPrice||0)*0.15)).toLocaleString()}</div>
+            <div class="trip-summary-sub">excl. buffer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Keep legacy proceedToPlanTrip for backward compatibility (e.g. from itinerary)
+function proceedToPlanTrip(transportName, transportPrice) {
+  proceedToBudget(transportName, transportPrice);
+}
+
+function confirmAndPayTrip() {
+  const total = parseFloat(document.getElementById('totalBudget').value) || 0;
+  const tripTitle = window.currentTrip.destName ? `Trip to ${window.currentTrip.destName}` : 'Your Custom Trip';
+
+  // Open booking modal
+  document.getElementById('bookingModalOverlay').classList.remove('hidden');
+  const modal = document.getElementById('bookingModal');
+  modal.classList.remove('hidden');
+
+  const headerText = modal.querySelector('h3');
+  if (headerText) {
+    headerText.textContent = `✅ Confirm & Pay for ${tripTitle} (₹${Number(total).toLocaleString()})`;
+  }
+
+  // Store total for receipt
+  window._pendingPaymentTotal = total;
+}
+
+function generateTripReceipt() {
+  const trip = window.currentTrip;
+  const total = window._pendingPaymentTotal || parseFloat(document.getElementById('totalBudget').value) || 0;
+  const now = new Date();
+  const receiptNo = window._lastBookingReceiptNo || ('STP-' + now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2) + '-' + Math.floor(Math.random()*9000+1000));
+  const dateStr = now.toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  const dest = destinations.find(d => d.id === trip.destId);
+
+  const receiptContainer = document.getElementById('tripReceiptContainer');
+  if (!receiptContainer) return;
+
+  receiptContainer.classList.remove('hidden');
+  receiptContainer.innerHTML = `
+    <div class="trip-receipt" id="tripReceiptCard">
+      <div class="receipt-header">
+        <div class="receipt-brand">
+          <span style="font-size:28px;">🧭</span>
+          <div>
+            <div class="receipt-brand-name">Smart Travel Planner</div>
+            <div class="receipt-brand-sub">Official Trip Booking Receipt</div>
+          </div>
+        </div>
+        <div class="receipt-no-block">
+          <div class="receipt-label">Receipt No.</div>
+          <div class="receipt-no">${receiptNo}</div>
+          <div class="receipt-date">${dateStr}</div>
+        </div>
+      </div>
+
+      <div class="receipt-status-badge">✅ PAYMENT CONFIRMED</div>
+
+      <div class="receipt-section">
+        <div class="receipt-section-title">📍 Trip Details</div>
+        <div class="receipt-row">
+          <span>Destination</span>
+          <span><strong>${trip.destName || '—'}</strong></span>
+        </div>
+        ${dest ? `
+        <div class="receipt-row">
+          <span>Duration</span>
+          <span>${dest.duration}</span>
+        </div>
+        <div class="receipt-row">
+          <span>Best Season</span>
+          <span>${dest.season}</span>
+        </div>` : ''}
+      </div>
+
+      <div class="receipt-section">
+        <div class="receipt-section-title">🏨 Hotel &amp; Stay</div>
+        <div class="receipt-row">
+          <span>Hotel Name</span>
+          <span><strong>${trip.hotelName || '—'}</strong></span>
+        </div>
+        <div class="receipt-row">
+          <span>Stay Cost</span>
+          <span>₹${(trip.hotelPrice || 0).toLocaleString()}</span>
+        </div>
+      </div>
+
+      <div class="receipt-section">
+        <div class="receipt-section-title">🚗 Transport</div>
+        <div class="receipt-row">
+          <span>Mode</span>
+          <span><strong>${trip.transportName || '—'}</strong></span>
+        </div>
+        <div class="receipt-row">
+          <span>Transport Cost</span>
+          <span>₹${(trip.transportPrice || 0).toLocaleString()}</span>
+        </div>
+      </div>
+
+      <div class="receipt-section">
+        <div class="receipt-section-title">💰 Cost Breakdown</div>
+        <div class="receipt-row">
+          <span>🏨 Hotel &amp; Stay</span>
+          <span>₹${(parseFloat(document.getElementById('expHotel').value)||0).toLocaleString()}</span>
+        </div>
+        <div class="receipt-row">
+          <span>🚗 Transport</span>
+          <span>₹${(parseFloat(document.getElementById('expTransport').value)||0).toLocaleString()}</span>
+        </div>
+        <div class="receipt-row">
+          <span>🎟️ Activities &amp; Entry</span>
+          <span>₹${(parseFloat(document.getElementById('expActivities').value)||0).toLocaleString()}</span>
+        </div>
+        <div class="receipt-row receipt-total-row">
+          <span>TOTAL PAID</span>
+          <span>₹${total.toLocaleString()}</span>
+        </div>
+      </div>
+
+      <div class="receipt-footer">
+        <div class="receipt-upi">
+          <span>💳 Paid via UPI</span>
+          <span>akashakas723@okaxis</span>
+        </div>
+        <div class="receipt-thankyou">Thank you for booking with Smart Travel Planner! 🌟</div>
+        <div class="receipt-note">This is a computer-generated receipt. For any queries, contact support@smarttravelplanner.in</div>
+        <button class="btn accent" style="margin-top:16px; width:100%; padding:12px;" onclick="window.print()">
+          🖨️ Print Receipt
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Smooth scroll to receipt
+  receiptContainer.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Initial render for hotels
+document.addEventListener('DOMContentLoaded', () => {
+  renderHotelsList(hotelsData);
+});
+
+// ---------------- COMPLETE TRIP PLANNER ----------------
+
+function openPlanTripModal(defaultDestId = null, existingConfig = null) {
+  const destSelect = document.getElementById('ptDest');
+  destSelect.innerHTML = destinations.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  
+  if (defaultDestId) {
+    destSelect.value = defaultDestId;
+  }
+  
+  if (existingConfig) {
+    if (existingConfig.dest && existingConfig.dest.id) destSelect.value = existingConfig.dest.id;
+    if (existingConfig.startDate) document.getElementById('ptStartDate').value = existingConfig.startDate;
+    if (existingConfig.days) document.getElementById('ptDays').value = existingConfig.days;
+    if (existingConfig.travellers) document.getElementById('ptTravellers').value = existingConfig.travellers;
+    if (existingConfig.budget) document.getElementById('ptBudget').value = existingConfig.budget;
+    if (existingConfig.group) document.getElementById('ptGroup').value = existingConfig.group;
+    if (existingConfig.style) document.getElementById('ptStyle').value = existingConfig.style;
+    if (existingConfig.interests && Array.isArray(existingConfig.interests)) {
+      document.querySelectorAll('#ptInterests input').forEach(cb => {
+        cb.checked = existingConfig.interests.some(i => cb.value.includes(i));
+      });
+    }
+  } else {
+    // Set default dates
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+    document.getElementById('ptStartDate').value = nextWeek.toISOString().split('T')[0];
+  }
+  
+  document.getElementById('planTripModalOverlay').classList.remove('hidden');
+  document.getElementById('planTripModal').classList.remove('hidden');
+}
+
+function closePlanTripModal() {
+  document.getElementById('planTripModalOverlay').classList.add('hidden');
+  document.getElementById('planTripModal').classList.add('hidden');
+}
+
+function closePlanner() {
+  document.getElementById('plannerItineraryCard').classList.add('hidden');
+  document.getElementById('destList').classList.remove('hidden');
+  document.getElementById('destList').parentElement.querySelector('.section-header').classList.remove('hidden');
+  document.getElementById('destList').parentElement.querySelector('.category-strip').classList.remove('hidden');
+}
+
+function generateItinerary(e) {
+  e.preventDefault();
+  closePlanTripModal();
+  
+  const destId = parseInt(document.getElementById('ptDest').value);
+  const dest = destinations.find(d => d.id === destId);
+  const startDate = document.getElementById('ptStartDate').value;
+  const days = parseInt(document.getElementById('ptDays').value);
+  const travellers = parseInt(document.getElementById('ptTravellers').value);
+  const budget = parseInt(document.getElementById('ptBudget').value);
+  const group = document.getElementById('ptGroup').value;
+  const style = document.getElementById('ptStyle').value;
+  
+  // Get selected interests
+  const interests = Array.from(document.querySelectorAll('#ptInterests input:checked')).map(cb => cb.value.split(',')).flat();
+  
+  plannerConfig = { dest, startDate, days, travellers, budget, group, style, interests };
+  
+  // Generate days based on POIs
+  const pois = touristPOIs[destId] ? [...touristPOIs[destId]] : [];
+  
+  // Very basic scoring based on interests
+  pois.forEach(p => {
+    p.score = 0;
+    interests.forEach(i => {
+      if (p.type === i) p.score += 2;
+    });
+    // Add realistic cost and duration if not present
+    p.cost = p.cost || (Math.floor(Math.random() * 4 + 1) * 100);
+    p.durationMins = p.durationMins || (Math.floor(Math.random() * 2 + 1) * 60);
+  });
+  
+  // Sort POIs by interest score
+  pois.sort((a, b) => b.score - a.score);
+  
+  let placesPerDay = 3;
+  if (style === 'relaxed') placesPerDay = 2;
+  if (style === 'packed') placesPerDay = 5;
+  
+  currentItinerary = [];
+  let poiIndex = 0;
+  
+  for (let i=0; i<days; i++) {
+    const dayDate = new Date(startDate);
+    dayDate.setDate(dayDate.getDate() + i);
+    
+    let dayActivities = [];
+    
+    // Helper to format time
+    const formatTime = (minsFromMidnight) => {
+      let h = Math.floor(minsFromMidnight / 60);
+      let m = minsFromMidnight % 60;
+      let suffix = h >= 12 && h < 24 ? "PM" : "AM";
+      let displayH = h % 12;
+      if (displayH === 0) displayH = 12;
+      let displayM = m.toString().padStart(2, '0');
+      return `${displayH}:${displayM} ${suffix}`;
+    };
+
+    let currentTimeMins = 8 * 60 + 30; // 8:30 AM Start
+    
+    // Breakfast
+    dayActivities.push({
+      name: "Breakfast & Briefing",
+      type: "meal",
+      desc: "Start your day with a hearty local breakfast to fuel up for the journey.",
+      timeStr: `${formatTime(currentTimeMins)} - ${formatTime(currentTimeMins + 45)}`,
+      durationMins: 45,
+      cost: 200,
+      icon: "🍳"
+    });
+    
+    currentTimeMins += 45 + 15; // 45m breakfast + 15m travel
+    
+    let morningPlaces = Math.ceil(placesPerDay / 2);
+    let afternoonPlaces = placesPerDay - morningPlaces;
+    
+    // Morning activities
+    for (let j=0; j<morningPlaces; j++) {
+      if (poiIndex < pois.length) {
+        const p = pois[poiIndex++];
+        let dur = p.durationMins || 90;
+        dayActivities.push({
+          ...p,
+          timeStr: `${formatTime(currentTimeMins)} - ${formatTime(currentTimeMins + dur)}`,
+          travelToNext: "15-20 mins (Taxi/Auto)",
+          icon: POI_TYPE_CONFIG[p.type] ? POI_TYPE_CONFIG[p.type].emoji : "📍"
+        });
+        currentTimeMins += dur + 20; // duration + travel time
+      }
+    }
+    
+    // Lunch
+    if (currentTimeMins < 13 * 60) currentTimeMins = 13 * 60; // Lunch around 1 PM
+    dayActivities.push({
+      name: "Lunch Break",
+      type: "meal",
+      desc: "Enjoy traditional local cuisine at a highly-rated nearby restaurant.",
+      timeStr: `${formatTime(currentTimeMins)} - ${formatTime(currentTimeMins + 60)}`,
+      durationMins: 60,
+      cost: 400,
+      icon: "🍲"
+    });
+    
+    currentTimeMins += 60 + 20; // 60m lunch + 20m travel
+    
+    // Afternoon/Evening activities
+    for (let j=0; j<afternoonPlaces; j++) {
+      if (poiIndex < pois.length) {
+        const p = pois[poiIndex++];
+        let dur = p.durationMins || 90;
+        dayActivities.push({
+          ...p,
+          timeStr: `${formatTime(currentTimeMins)} - ${formatTime(currentTimeMins + dur)}`,
+          travelToNext: "15-20 mins (Taxi/Auto)",
+          icon: POI_TYPE_CONFIG[p.type] ? POI_TYPE_CONFIG[p.type].emoji : "📍"
+        });
+        currentTimeMins += dur + 20; // duration + travel time
+      }
+    }
+    
+    // Dinner
+    if (currentTimeMins < 19 * 60 + 30) currentTimeMins = 19 * 60 + 30; // Dinner at least at 7:30 PM
+    dayActivities.push({
+      name: "Dinner & Leisure",
+      type: "meal",
+      desc: "Wind down and relax with a delicious dinner.",
+      timeStr: `${formatTime(currentTimeMins)} - ${formatTime(currentTimeMins + 60)}`,
+      durationMins: 60,
+      cost: 500,
+      icon: "🍽️"
+    });
+    
+    currentItinerary.push({
+      day: i+1,
+      date: dayDate.toDateString(),
+      activities: dayActivities
+    });
+  }
+  
+  renderItinerary();
+}
+
+function renderItinerary(savedPlanRef = null) {
+  document.getElementById('destList').parentElement.querySelector('.section-header').classList.add('hidden');
+  document.getElementById('destList').parentElement.querySelector('.category-strip').classList.add('hidden');
+  document.getElementById('destList').classList.add('hidden');
+  document.getElementById('destDetailCard').classList.add('hidden');
+  
+  const card = document.getElementById('plannerItineraryCard');
+  card.classList.remove('hidden');
+  
+  // Calculate total costs
+  let totalActivityCost = 0;
+  currentItinerary.forEach(d => {
+    if (d.activities) d.activities.forEach(a => totalActivityCost += (a.cost || 0));
+  });
+  totalActivityCost *= (plannerConfig.travellers || 1);
+  
+  let remainingBudget = (plannerConfig.budget || 0) - totalActivityCost;
+  let budgetColor = remainingBudget >= 0 ? '#10b981' : '#ef4444';
+  let warningHtml = remainingBudget < 0 ? `<div style="background:#fee2e2; color:#ef4444; padding:10px; border-radius:6px; margin-top:10px; font-size:13px; font-weight:700;">⚠️ This itinerary exceeds your budget. Try removing activities or switching to a relaxed pace.</div>` : '';
+  
+  // Check if we are viewing a saved plan or active plan
+  const planInfo = savedPlanRef || (activePlanId ? savedPlans.find(p => p.id === activePlanId) : null);
+  const planBannerHtml = planInfo ? `
+    <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #93c5fd; padding: 12px 18px; border-radius: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 24px;">🧭</span>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <strong style="font-size: 15px; color: #1e3a8a;">${planInfo.title}</strong>
+            <span class="saved-plan-status-pill status-${(planInfo.status || 'planning').toLowerCase()}">${planInfo.status || 'Planning'}</span>
+          </div>
+          <span style="font-size: 12px; color: #3b82f6;">Saved Plan ID #${planInfo.id} • Last updated: ${new Date(planInfo.updated_at || Date.now()).toLocaleDateString()}</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn small accent" onclick="openSavePlanModal()">💾 Update This Saved Plan</button>
+        <button class="btn small secondary" onclick="openSavedPlansTab()">View All Plans</button>
+      </div>
+    </div>
+  ` : '';
+
+  const saveBtn = document.getElementById('btnSaveTripPlan');
+  if (saveBtn) {
+    saveBtn.innerHTML = planInfo ? `💾 Update Saved Plan (#${planInfo.id})` : `💾 Save This Planned Trip`;
+  }
+
+  let html = `
+    ${planBannerHtml}
+    <div style="background:var(--bg); padding:18px 20px; border-radius:12px; margin-bottom:20px; border:1px solid #e2e8f0;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h2 style="margin:0 0 6px; color:var(--primary); font-size:24px;">Trip to ${(plannerConfig.dest && plannerConfig.dest.name) || (planInfo && (planInfo.destination_name || planInfo.destinationName)) || 'Destination'}</h2>
+          <div style="display:flex; gap:16px; font-size:14px; color:#475569; flex-wrap:wrap;">
+            <span>🗓️ ${plannerConfig.days} Days (${new Date(plannerConfig.startDate).toLocaleDateString()})</span>
+            <span>👥 ${plannerConfig.travellers} ${plannerConfig.group}</span>
+            <span>🏃 Pace: ${plannerConfig.style}</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn secondary small" onclick="openSavePlanModal()" style="font-weight:700;">💾 ${planInfo ? 'Update Plan' : 'Save Plan'}</button>
+          <button class="btn accent small" onclick="saveItineraryToBudget()">💰 Send to Budget</button>
+        </div>
+      </div>
+      
+      <div style="margin-top:16px; display:flex; gap:20px; align-items:center; flex-wrap:wrap; padding-top:14px; border-top:1px dashed #cbd5e1;">
+        <div>
+          <span style="font-size:11px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">TOTAL BUDGET</span>
+          <div style="font-size:19px; font-weight:800; color:#0f172a;">₹${Number(plannerConfig.budget || 0).toLocaleString()}</div>
+        </div>
+        <div>
+          <span style="font-size:11px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">EST. ACTIVITY COST</span>
+          <div style="font-size:19px; font-weight:800; color:#2563eb;">₹${totalActivityCost.toLocaleString()}</div>
+        </div>
+        <div>
+          <span style="font-size:11px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">REMAINING (Hotel + Transport)</span>
+          <div style="font-size:19px; font-weight:800; color:${budgetColor};">₹${remainingBudget.toLocaleString()}</div>
+        </div>
+      </div>
+      ${warningHtml}
+    </div>
+    
+    <div class="itinerary-days">
+  `;
+  
+  currentItinerary.forEach((day, dIdx) => {
+    html += `
+      <div style="margin-bottom:24px; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; background:white; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+        <div style="background:#f8fafc; padding:12px 18px; border-bottom:1px solid #e2e8f0; font-weight:800; color:var(--primary); display:flex; justify-content:space-between; align-items:center;">
+          <span>Day ${day.day} - ${day.date}</span>
+          <span style="font-size:12px; color:var(--muted); font-weight:600;">${day.activities ? day.activities.length : 0} activities scheduled</span>
+        </div>
+        <div style="padding:18px;">
+    `;
+    
+    if (!day.activities || day.activities.length === 0) {
+      html += `<p style="color:var(--muted); font-size:14px; margin:10px 0;">No activities scheduled for this day. Relax and explore!</p>`;
+    } else {
+      day.activities.forEach((act, aIdx) => {
+        let typeInfo = POI_TYPE_CONFIG[act.type] || { color: '#64748b', emoji: '📍', label: 'Activity' };
+        let isMeal = act.type === 'meal';
+        let actColor = isMeal ? '#f59e0b' : typeInfo.color;
+        let actLabel = isMeal ? 'Meal Break' : typeInfo.label;
+        
+        html += `
+          <div style="display:flex; gap:16px; margin-bottom:20px; padding-bottom:20px; border-bottom:1px dashed #e2e8f0; position:relative;">
+            <div style="min-width:145px; font-size:13.5px; font-weight:800; color:#0f172a; padding-top:4px; border-right:3px solid ${actColor}40; padding-right:12px;">
+              ${act.timeStr || 'Flexible'}
+              ${act.travelToNext ? `<div style="font-size:11px; color:var(--muted); font-weight:600; margin-top:8px;">🚗 ${act.travelToNext}</div>` : ''}
+            </div>
+            <div style="flex:1;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div>
+                  <h4 style="margin:0 0 4px; font-size:17px; color:var(--primary);">${act.icon || typeInfo.emoji} ${act.name}</h4>
+                  <div style="font-size:12px; color:${actColor}; font-weight:700; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">${actLabel}</div>
+                </div>
+                ${!isMeal ? `<button onclick="removeActivity(${dIdx}, ${aIdx})" style="background:#fee2e2; border:1px solid #fca5a5; color:#ef4444; border-radius:6px; padding:4px 8px; font-size:12px; cursor:pointer;" title="Remove Activity">✕ Remove</button>` : ''}
+              </div>
+              <p style="margin:0 0 12px; font-size:13.5px; color:#334155; line-height:1.5;">${act.desc || ''}</p>
+              <div style="display:flex; gap:12px; font-size:12px; color:var(--muted); flex-wrap:wrap;">
+                <span style="background:#f1f5f9; padding:5px 10px; border-radius:6px; font-weight:600;">⏱️ Duration: ${Math.round(act.durationMins || 60)} mins</span>
+                ${act.cost ? `<span style="background:#f1f5f9; padding:5px 10px; border-radius:6px; font-weight:600;">💸 Est. ₹${act.cost}/person</span>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+    
+    html += `</div></div>`;
+  });
+  
+  html += `</div>`;
+  
+  document.getElementById('plannerItineraryBody').innerHTML = html;
+}
+
+function removeActivity(dayIndex, actIndex) {
+  if (currentItinerary[dayIndex] && currentItinerary[dayIndex].activities) {
+    currentItinerary[dayIndex].activities.splice(actIndex, 1);
+    renderItinerary();
+  }
+}
+
+function saveItineraryToBudget() {
+  let totalActivityCost = 0;
+  currentItinerary.forEach(d => {
+    if (d.activities) d.activities.forEach(a => totalActivityCost += (a.cost || 0));
+  });
+  totalActivityCost *= (plannerConfig.travellers || 1);
+  
+  document.getElementById('totalBudget').value = plannerConfig.budget || 15000;
+  document.getElementById('expActivities').value = totalActivityCost;
+  
+  // Assign arbitrary values for hotel and transport if they are empty
+  const hotel = document.getElementById('expHotel').value || Math.round(((plannerConfig.budget || 15000) - totalActivityCost) * 0.6);
+  const transport = document.getElementById('expTransport').value || Math.round(((plannerConfig.budget || 15000) - totalActivityCost) * 0.4);
+  
+  document.getElementById('expHotel').value = Math.max(0, hotel);
+  document.getElementById('expTransport').value = Math.max(0, transport);
+  
+  updateBudget();
+  document.querySelector('[data-tab="budget"]').click();
+  showToast('Budget synchronized from trip plan!');
+}
+
+// ---------------- SAVED PLANNED TRIPS LOGIC ----------------
+
+async function loadSavedPlansFromStorage() {
+  let localPlans = [];
+  try {
+    const raw = localStorage.getItem('stp_saved_plans');
+    if (raw) localPlans = JSON.parse(raw);
+  } catch (_) {
+    localPlans = [];
+  }
+
+  if (currentUser) {
+    try {
+      const res = await fetch(`${API_BASE}/planned-trips/user/${currentUser.id}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.plans)) {
+        savedPlans = data.plans;
+        // Merge any local-only plans that may have been created offline
+        const dbIds = new Set(savedPlans.map(p => p.id));
+        localPlans.forEach(lp => {
+          if (!dbIds.has(lp.id) && !savedPlans.some(sp => sp.title === lp.title && sp.destination_name === lp.destination_name)) {
+            savedPlans.push(lp);
+          }
+        });
+        localStorage.setItem('stp_saved_plans', JSON.stringify(savedPlans));
+        const syncStatus = document.getElementById('savedPlansSyncStatus');
+        if (syncStatus) syncStatus.innerHTML = `☁️ Synced with MySQL Database (${savedPlans.length} plans)`;
+      } else {
+        savedPlans = localPlans;
+      }
+    } catch (err) {
+      console.warn('Could not fetch cloud plans, using local cache:', err);
+      savedPlans = localPlans;
+      const syncStatus = document.getElementById('savedPlansSyncStatus');
+      if (syncStatus) syncStatus.innerHTML = `📱 Local Storage (${savedPlans.length} plans)`;
+    }
+  } else {
+    savedPlans = localPlans;
+    const syncStatus = document.getElementById('savedPlansSyncStatus');
+    if (syncStatus) syncStatus.innerHTML = `📱 Guest Storage (Log in to backup)`;
+  }
+
+  updateSavedPlansUI();
+}
+
+function updateSavedPlansUI() {
+  const badge = document.getElementById('savedPlansBadge');
+  if (badge) {
+    badge.textContent = savedPlans.length;
+    badge.style.display = savedPlans.length > 0 ? 'inline-block' : 'none';
+  }
+
+  const profileCount = document.getElementById('profileSavedPlansCount');
+  if (profileCount) profileCount.textContent = savedPlans.length;
+
+  const profileStatus = document.getElementById('profilePlansStatus');
+  if (profileStatus) {
+    profileStatus.textContent = savedPlans.length === 0
+      ? 'No saved trip plans yet — start planning your next adventure!'
+      : `${savedPlans.length} customized travel plan${savedPlans.length === 1 ? '' : 's'} saved`;
+  }
+
+  // Update filter counters
+  const cAll = document.getElementById('countFilterAll');
+  if (cAll) cAll.textContent = savedPlans.length;
+
+  const cPlanning = document.getElementById('countFilterPlanning');
+  if (cPlanning) cPlanning.textContent = savedPlans.filter(p => (p.status || 'planning').toLowerCase() === 'planning').length;
+
+  const cReady = document.getElementById('countFilterReady');
+  if (cReady) cReady.textContent = savedPlans.filter(p => (p.status || '').toLowerCase() === 'ready').length;
+
+  const cBooked = document.getElementById('countFilterBooked');
+  if (cBooked) cBooked.textContent = savedPlans.filter(p => (p.status || '').toLowerCase() === 'booked').length;
+
+  // Filter plans for the main grid
+  let displayedPlans = savedPlans;
+  if (activePlanFilter !== 'all') {
+    displayedPlans = savedPlans.filter(p => (p.status || 'planning').toLowerCase() === activePlanFilter.toLowerCase());
+  }
+
+  const grid = document.getElementById('savedPlansGrid');
+  const emptyView = document.getElementById('savedPlansEmpty');
+
+  if (savedPlans.length === 0) {
+    if (grid) grid.innerHTML = '';
+    if (emptyView) emptyView.classList.remove('hidden');
+  } else {
+    if (emptyView) emptyView.classList.add('hidden');
+    if (grid) {
+      if (displayedPlans.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--muted); background: white; border-radius: 12px; border: 1px dashed #cbd5e1;">
+            <p>No trip plans found with status "<strong>${activePlanFilter}</strong>".</p>
+            <button class="btn small secondary" onclick="filterSavedPlansByStatus('all', document.querySelector('.plan-filter-btn'))">Show All Plans</button>
+          </div>
+        `;
+      } else {
+        grid.innerHTML = displayedPlans.map(plan => renderSavedPlanCard(plan)).join('');
+      }
+    }
+  }
+
+  // Also render showcase inside Account profile
+  const profileList = document.getElementById('profileSavedPlansList');
+  if (profileList) {
+    if (savedPlans.length === 0) {
+      profileList.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; padding: 30px; background: white; border-radius: 12px; border: 1px dashed #cbd5e1;">
+          <p style="color: var(--muted); margin: 0 0 12px;">You haven't saved any planned trips yet.</p>
+          <button class="btn accent small" onclick="openPlanTripModal()">✨ Plan a New Trip</button>
+        </div>
+      `;
+    } else {
+      profileList.innerHTML = savedPlans.slice(0, 4).map(plan => renderSavedPlanCard(plan)).join('');
+    }
+  }
+}
+
+function renderSavedPlanCard(plan) {
+  const destId = plan.destination_id || plan.destinationId || 1;
+  const destName = plan.destination_name || plan.destinationName || 'Destination';
+  const destObj = destinations.find(d => d.id === destId) || {
+    name: destName,
+    img: 'assets/goa.jpg',
+    category: 'Travel'
+  };
+
+  const statusLower = (plan.status || 'planning').toLowerCase();
+  let statusClass = 'status-planning';
+  let statusText = '🟡 In Planning';
+  if (statusLower === 'ready') {
+    statusClass = 'status-ready';
+    statusText = '🟢 Ready to Book';
+  } else if (statusLower === 'booked') {
+    statusClass = 'status-booked';
+    statusText = '🔵 Booked';
+  }
+
+  const durationDays = plan.duration_days || plan.durationDays || 3;
+  const durationStr = `${durationDays} Days / ${Math.max(1, durationDays - 1)} Nights`;
+  const startDate = plan.start_date || plan.startDate;
+  const dateStr = startDate ? new Date(startDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : 'Flexible';
+  const activityCost = plan.activity_cost || plan.activityCost || 0;
+  const remainingCost = Math.max(0, (plan.budget || 0) - activityCost);
+
+  return `
+    <div class="saved-plan-card" id="planCard-${plan.id}">
+      <div class="saved-plan-cover" style="background-image: url('${destObj.img || 'assets/goa.jpg'}');">
+        <span class="saved-plan-dest-badge">📍 ${destName} • ${destObj.category || 'Package'}</span>
+        <span class="saved-plan-status-pill ${statusClass}">${statusText}</span>
+        <div class="saved-plan-cover-title">
+          <h3>${plan.title}</h3>
+          <span>🗓️ ${dateStr} • ${durationStr}</span>
+        </div>
+      </div>
+
+      <div class="saved-plan-body">
+        <div class="saved-plan-metrics">
+          <div class="saved-plan-metric-box">
+            <span class="label">👥 Travellers</span>
+            <span class="val">${plan.travellers || 1} (${plan.group_type || plan.groupType || 'Solo'})</span>
+          </div>
+          <div class="saved-plan-metric-box">
+            <span class="label">🏃 Pace</span>
+            <span class="val">${plan.pace_style || plan.paceStyle || 'Balanced'}</span>
+          </div>
+        </div>
+
+        <div class="saved-plan-budget-box">
+          <div class="saved-plan-budget-row">
+            <span style="color:var(--muted); font-weight:600;">Target Budget:</span>
+            <strong style="color:#0f172a;">₹${Number(plan.budget || 0).toLocaleString()}</strong>
+          </div>
+          <div class="saved-plan-budget-row">
+            <span style="color:var(--muted); font-weight:600;">Est. Activity Cost:</span>
+            <strong style="color:#2563eb;">₹${Number(activityCost).toLocaleString()}</strong>
+          </div>
+          <div class="saved-plan-budget-row" style="margin-top:4px; padding-top:4px; border-top:1px dashed #cbd5e1;">
+            <span style="color:var(--muted); font-weight:600;">Remaining for Stay:</span>
+            <strong style="color:#10b981;">₹${remainingCost.toLocaleString()}</strong>
+          </div>
+        </div>
+
+        ${plan.notes ? `<div class="saved-plan-notes">📝 <strong>Notes:</strong> ${plan.notes}</div>` : ''}
+
+        <div class="saved-plan-footer-actions">
+          <button class="btn accent small" style="flex:1; justify-content:center; font-weight:700;" onclick="reviewSavedPlan(${plan.id})">
+            👁️ Review Plan
+          </button>
+          <button class="btn secondary small" style="flex:1; justify-content:center;" onclick="continuePlanningSavedPlan(${plan.id})">
+            ✏️ Continue Planning
+          </button>
+          <button class="btn small" style="background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1;" title="Send to Budget Calculator" onclick="syncPlanToBudget(${plan.id})">
+            💰 Budget
+          </button>
+          <button class="btn small" style="background:#fee2e2; color:#ef4444; border:1px solid #fca5a5;" title="Delete Plan" onclick="deleteSavedPlan(${plan.id})">
+            🗑️
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function filterSavedPlansByStatus(status, btn) {
+  activePlanFilter = status;
+  document.querySelectorAll('.plan-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  updateSavedPlansUI();
+}
+
+function openSavedPlansTab() {
+  const btn = document.querySelector('[data-tab="savedplans"]');
+  if (btn) btn.click();
+}
+
+function openSavePlanModal() {
+  if (!plannerConfig || !plannerConfig.dest) {
+    alert("Please plan or generate an itinerary first!");
+    return;
+  }
+
+  const existingPlan = activePlanId ? savedPlans.find(p => p.id === activePlanId) : null;
+
+  document.getElementById('savePlanModalTitle').textContent = existingPlan ? 'Update Saved Trip Plan' : 'Save Trip Plan';
+  document.getElementById('btnConfirmSavePlan').textContent = existingPlan ? '💾 Update Plan' : '💾 Save Trip Plan';
+
+  document.getElementById('spTitle').value = existingPlan ? existingPlan.title : `${plannerConfig.days}-Day ${plannerConfig.dest.name} Getaway`;
+  document.getElementById('spDestDisplay').value = plannerConfig.dest.name;
+  document.getElementById('spStatus').value = existingPlan ? existingPlan.status : 'Planning';
+  document.getElementById('spNotes').value = existingPlan ? (existingPlan.notes || '') : '';
+
+  let totalCost = 0;
+  if (currentItinerary && Array.isArray(currentItinerary)) {
+    currentItinerary.forEach(d => {
+      if (d.activities) d.activities.forEach(a => totalCost += (a.cost || 0));
+    });
+    totalCost *= (plannerConfig.travellers || 1);
+  }
+
+  document.getElementById('spSummaryDuration').textContent = `${plannerConfig.days} Days / ${Math.max(1, plannerConfig.days - 1)} Nights`;
+  document.getElementById('spSummaryTravellers').textContent = `${plannerConfig.travellers} (${plannerConfig.group || 'Solo'})`;
+  document.getElementById('spSummaryBudget').textContent = `₹${(plannerConfig.budget || 0).toLocaleString()}`;
+  document.getElementById('spSummaryCost').textContent = `₹${totalCost.toLocaleString()}`;
+
+  document.getElementById('savePlanModalOverlay').classList.remove('hidden');
+  document.getElementById('savePlanModal').classList.remove('hidden');
+}
+
+function closeSavePlanModal() {
+  document.getElementById('savePlanModalOverlay').classList.add('hidden');
+  document.getElementById('savePlanModal').classList.add('hidden');
+}
+
+async function handleSavePlanSubmit(event) {
+  event.preventDefault();
+
+  const title = document.getElementById('spTitle').value.trim();
+  const status = document.getElementById('spStatus').value;
+  const notes = document.getElementById('spNotes').value.trim();
+
+  let totalActivityCost = 0;
+  if (currentItinerary && Array.isArray(currentItinerary)) {
+    currentItinerary.forEach(d => {
+      if (d.activities) d.activities.forEach(a => totalActivityCost += (a.cost || 0));
+    });
+    totalActivityCost *= (plannerConfig.travellers || 1);
+  }
+
+  const payload = {
+    id: activePlanId || undefined,
+    userId: currentUser ? currentUser.id : null,
+    title,
+    destinationId: plannerConfig.dest.id,
+    destination_id: plannerConfig.dest.id,
+    destinationName: plannerConfig.dest.name,
+    destination_name: plannerConfig.dest.name,
+    startDate: plannerConfig.startDate,
+    start_date: plannerConfig.startDate,
+    durationDays: plannerConfig.days,
+    duration_days: plannerConfig.days,
+    travellers: plannerConfig.travellers,
+    groupType: plannerConfig.group,
+    group_type: plannerConfig.group,
+    paceStyle: plannerConfig.style,
+    pace_style: plannerConfig.style,
+    budget: plannerConfig.budget,
+    activityCost: totalActivityCost,
+    activity_cost: totalActivityCost,
+    interests: plannerConfig.interests,
+    itineraryData: currentItinerary,
+    itinerary_data: JSON.stringify(currentItinerary),
+    notes,
+    status
+  };
+
+  closeSavePlanModal();
+
+  try {
+    const res = await fetch(`${API_BASE}/planned-trips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      if (!activePlanId && data.planId) {
+        activePlanId = data.planId;
+        payload.id = data.planId;
+      }
+      showToast(data.message || '🎉 Trip plan saved successfully!');
+    }
+  } catch (err) {
+    console.warn('Saved plan locally (server unreachable):', err);
+    if (!activePlanId) {
+      payload.id = Date.now();
+      activePlanId = payload.id;
+    }
+    showToast('💾 Trip plan saved locally!');
+  }
+
+  // Update local storage
+  payload.id = payload.id || activePlanId || Date.now();
+  payload.updated_at = new Date().toISOString();
+  const existingIdx = savedPlans.findIndex(p => p.id === payload.id);
+  if (existingIdx > -1) {
+    savedPlans[existingIdx] = { ...savedPlans[existingIdx], ...payload };
+  } else {
+    savedPlans.unshift(payload);
+  }
+  localStorage.setItem('stp_saved_plans', JSON.stringify(savedPlans));
+
+  updateSavedPlansUI();
+
+  // Update button in planner
+  const btn = document.getElementById('btnSaveTripPlan');
+  if (btn) btn.innerHTML = `✅ Saved (#${payload.id}) — Update`;
+}
+
+function reviewSavedPlan(planId) {
+  const plan = savedPlans.find(p => Number(p.id) === Number(planId));
+  if (!plan) return;
+
+  activePlanId = plan.id;
+  const destId = plan.destination_id || plan.destinationId || 1;
+  const destName = plan.destination_name || plan.destinationName || 'Destination';
+  const dest = destinations.find(d => d.id === destId) || {
+    id: destId,
+    name: destName,
+    img: 'assets/goa.jpg'
+  };
+
+  plannerConfig = {
+    dest,
+    startDate: plan.start_date || plan.startDate || new Date().toISOString().split('T')[0],
+    days: plan.duration_days || plan.durationDays || 3,
+    travellers: plan.travellers || 1,
+    budget: plan.budget || 15000,
+    group: plan.group_type || plan.groupType || 'solo',
+    style: plan.pace_style || plan.paceStyle || 'balanced',
+    interests: plan.interests || []
+  };
+
+  currentItinerary = plan.itineraryData || plan.itinerary_data || [];
+  if (typeof currentItinerary === 'string') {
+    try { currentItinerary = JSON.parse(currentItinerary); } catch (_) { currentItinerary = []; }
+  }
+
+  // Switch to destination tab and render itinerary
+  document.querySelector('[data-tab="destinations"]').click();
+  renderItinerary(plan);
+  
+  // Update button label
+  const btn = document.getElementById('btnSaveTripPlan');
+  if (btn) btn.innerHTML = `💾 Update Saved Plan (#${plan.id})`;
+
+  showToast(`Loaded "${plan.title}" for review!`);
+}
+
+function continuePlanningSavedPlan(planId) {
+  const plan = savedPlans.find(p => Number(p.id) === Number(planId));
+  if (!plan) return;
+
+  activePlanId = plan.id;
+  const destId = plan.destination_id || plan.destinationId || 1;
+  const destName = plan.destination_name || plan.destinationName || 'Destination';
+  const dest = destinations.find(d => d.id === destId) || {
+    id: destId,
+    name: destName,
+    img: 'assets/goa.jpg'
+  };
+
+  plannerConfig = {
+    dest,
+    startDate: plan.start_date || plan.startDate || new Date().toISOString().split('T')[0],
+    days: plan.duration_days || plan.durationDays || 3,
+    travellers: plan.travellers || 1,
+    budget: plan.budget || 15000,
+    group: plan.group_type || plan.groupType || 'solo',
+    style: plan.pace_style || plan.paceStyle || 'balanced',
+    interests: plan.interests || []
+  };
+
+  currentItinerary = plan.itineraryData || plan.itinerary_data || [];
+  if (typeof currentItinerary === 'string') {
+    try { currentItinerary = JSON.parse(currentItinerary); } catch (_) { currentItinerary = []; }
+  }
+
+  // Switch to destination tab
+  document.querySelector('[data-tab="destinations"]').click();
+  // Open the plan preferences modal pre-filled with this plan's exact data
+  openPlanTripModal(destId, plannerConfig);
+
+  showToast(`Continuing plan: "${plan.title}". Adjust your preferences or schedule anytime.`);
+}
+
+async function deleteSavedPlan(planId) {
+  if (!confirm("Are you sure you want to delete this saved trip plan?")) return;
+
+  const numId = Number(planId);
+
+  try {
+    const res = await fetch(`${API_BASE}/planned-trips/${numId}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!data.success) console.warn('Server delete response:', data);
+  } catch (err) {
+    console.warn('Failed to delete on server:', err);
+  }
+
+  savedPlans = savedPlans.filter(p => Number(p.id) !== numId);
+  localStorage.setItem(getPlansStorageKey(), JSON.stringify(savedPlans)); // scoped per user
+
+  if (Number(activePlanId) === numId) {
+    activePlanId = null;
+    const btn = document.getElementById('btnSaveTripPlan');
+    if (btn) btn.innerHTML = `💾 Save This Planned Trip`;
+  }
+
+  updateSavedPlansUI();
+  showToast('Trip plan deleted.');
+}
+
+function syncPlanToBudget(planId) {
+  const plan = savedPlans.find(p => Number(p.id) === Number(planId));
+  if (!plan) return;
+
+  document.getElementById('totalBudget').value = plan.budget || 15000;
+  document.getElementById('expActivities').value = plan.activity_cost || 3000;
+  
+  const remaining = Math.max(0, (plan.budget || 15000) - (plan.activity_cost || 3000));
+  document.getElementById('expHotel').value = Math.round(remaining * 0.6);
+  document.getElementById('expTransport').value = Math.round(remaining * 0.4);
+
+  updateBudget();
+  document.querySelector('[data-tab="budget"]').click();
+  showToast(`Synced "${plan.title}" costs to Budget Calculator!`);
+}
+
+function showToast(msg) {
+  const existing = document.querySelector('.stp-toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = 'stp-toast';
+  toast.innerHTML = `<span>🧭</span> <div>${msg}</div>`;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(20px)';
+    toast.style.transition = 'all 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+

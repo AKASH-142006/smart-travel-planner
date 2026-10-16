@@ -43,6 +43,9 @@
         <button class="nav-tab-btn" data-tab="budget">
           <span>💰</span> 5. Budget &amp; Book
         </button>
+        <button class="nav-tab-btn" data-tab="savedplans" id="navSavedPlansBtn">
+          <span>🧭</span> 6. My Saved Plans <span class="cart-badge" id="savedPlansBadge" style="display:none; margin-left:3px; padding:2px 7px; font-size:11px;">0</span>
+        </button>
         <button class="nav-tab-btn" data-tab="auth">
           <span>👤</span> Account
         </button>
@@ -155,11 +158,17 @@
 
       <!-- Planner Itinerary View -->
       <div class="detail-card hidden" id="plannerItineraryCard">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
           <button class="btn secondary small" onclick="closePlanner()">← Back</button>
-          <div style="display:flex; gap:8px;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <button class="btn accent small" id="btnSaveTripPlan" onclick="openSavePlanModal()" style="font-weight:700; display:inline-flex; align-items:center; gap:5px; box-shadow:0 3px 10px rgba(224, 86, 56, 0.35);">
+              💾 Save This Planned Trip
+            </button>
             <button class="btn secondary small" onclick="openPlanTripModal()">✏️ Edit Preferences</button>
-            <button class="btn accent small" onclick="saveItineraryToBudget()">💰 Send to Budget</button>
+            <button class="btn secondary small" onclick="saveItineraryToBudget()">💰 Send to Budget</button>
+            <button class="btn small" style="background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1;" onclick="openSavedPlansTab()">
+              📂 View Saved Plans
+            </button>
           </div>
         </div>
         <div id="plannerItineraryBody"></div>
@@ -446,6 +455,54 @@
       </div>
     </section>
 
+    <!-- MODULE 7: MY SAVED PLANS & ITINERARIES -->
+    <section id="savedplans" class="panel">
+      <div class="saved-plans-container">
+        
+        <div class="section-header" style="margin-bottom: 20px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size: 26px;">🧭</span>
+              <h2 style="margin:0;">My Saved Trips &amp; Planned Itineraries</h2>
+            </div>
+            <p style="margin-top:6px;">Review, customize, and continue planning your dream travel itineraries anytime</p>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button class="btn secondary small" onclick="loadSavedPlansFromStorage()">🔄 Refresh</button>
+            <button class="btn accent small" onclick="openPlanTripModal()">✨ Plan a New Trip</button>
+          </div>
+        </div>
+
+        <!-- Toolbar & Filter tabs -->
+        <div class="saved-plans-toolbar">
+          <div class="saved-plans-filters">
+            <span style="font-size:12px; font-weight:800; color:var(--muted); text-transform:uppercase; margin-right:4px;">Filter:</span>
+            <button class="plan-filter-btn active" onclick="filterSavedPlansByStatus('all', this)">All Plans (<span id="countFilterAll">0</span>)</button>
+            <button class="plan-filter-btn" onclick="filterSavedPlansByStatus('Planning', this)">🟡 In Planning (<span id="countFilterPlanning">0</span>)</button>
+            <button class="plan-filter-btn" onclick="filterSavedPlansByStatus('Ready', this)">🟢 Ready to Book (<span id="countFilterReady">0</span>)</button>
+            <button class="plan-filter-btn" onclick="filterSavedPlansByStatus('Booked', this)">🔵 Booked (<span id="countFilterBooked">0</span>)</button>
+          </div>
+          <div style="font-size:13px; color:var(--muted); font-weight:600;" id="savedPlansSyncStatus">
+            ☁️ Cloud Synced with MySQL
+          </div>
+        </div>
+
+        <!-- Saved Plans Cards Grid -->
+        <div class="saved-plans-grid" id="savedPlansGrid"></div>
+
+        <!-- Empty State (Shown when no plans exist) -->
+        <div class="saved-plans-empty hidden" id="savedPlansEmpty">
+          <div class="saved-plans-empty-icon">🧳</div>
+          <h3>No Planned Trips Saved Yet</h3>
+          <p>You haven't saved any customized travel plans yet. Generate a complete day-by-day itinerary for any destination and save it to access, review, or resume planning anytime!</p>
+          <button class="btn accent" style="padding:12px 28px; font-weight:800;" onclick="openPlanTripModal()">
+            ✨ Plan Your First Trip
+          </button>
+        </div>
+
+      </div>
+    </section>
+
     <!-- MODULE 1: ACCOUNT & PROFILE -->
     <section id="auth" class="panel">
 
@@ -518,7 +575,14 @@
 
         <!-- Stats Row -->
         <div class="profile-stats-row">
-          <div class="profile-stat-card">
+          <div class="profile-stat-card" style="cursor:pointer;" onclick="openSavedPlansTab()">
+            <div class="profile-stat-icon">🧭</div>
+            <div>
+              <div class="profile-stat-value" id="profileSavedPlansCount">0</div>
+              <div class="profile-stat-label">Saved Trip Plans</div>
+            </div>
+          </div>
+          <div class="profile-stat-card" style="cursor:pointer;" onclick="toggleCartDrawer()">
             <div class="profile-stat-icon">🎒</div>
             <div>
               <div class="profile-stat-value" id="profileCartCount">0</div>
@@ -528,7 +592,7 @@
           <div class="profile-stat-card">
             <div class="profile-stat-icon">🌍</div>
             <div>
-              <div class="profile-stat-value">6</div>
+              <div class="profile-stat-value">12</div>
               <div class="profile-stat-label">Destinations Available</div>
             </div>
           </div>
@@ -539,21 +603,20 @@
               <div class="profile-stat-label">MySQL Connection</div>
             </div>
           </div>
-          <div class="profile-stat-card">
-            <div class="profile-stat-icon">🔒</div>
-            <div>
-              <div class="profile-stat-value" style="font-size:14px; font-weight:700; color:#6366f1;">Secure</div>
-              <div class="profile-stat-label">Encrypted Password</div>
-            </div>
-          </div>
         </div>
 
         <!-- Quick Action Tiles -->
         <div class="profile-actions-grid">
+          <div class="profile-action-tile" onclick="openSavedPlansTab()">
+            <div class="profile-action-tile-icon">🧭</div>
+            <strong>My Saved Plans</strong>
+            <p>Access &amp; continue your planned trips</p>
+            <span class="profile-action-arrow">→</span>
+          </div>
           <div class="profile-action-tile" onclick="document.querySelector('[data-tab=\'destinations\']').click()">
             <div class="profile-action-tile-icon">✈️</div>
             <strong>Explore Trips</strong>
-            <p>Browse & add destinations to your cart</p>
+            <p>Browse &amp; add destinations to your cart</p>
             <span class="profile-action-arrow">→</span>
           </div>
           <div class="profile-action-tile" onclick="toggleCartDrawer()">
@@ -568,12 +631,21 @@
             <p>Estimate costs for your selected trips</p>
             <span class="profile-action-arrow">→</span>
           </div>
-          <div class="profile-action-tile" onclick="document.querySelector('[data-tab=\'mapweather\']').click()">
-            <div class="profile-action-tile-icon">🗺️</div>
-            <strong>Map & Weather</strong>
-            <p>Check live conditions at your destination</p>
-            <span class="profile-action-arrow">→</span>
+        </div>
+
+        <!-- Planned Trips Dashboard Showcase in Profile -->
+        <div class="profile-saved-section" style="margin-bottom: 24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div>
+              <h4 style="margin:0 0 3px; font-size:16px; color:var(--primary); font-weight:800;">🧭 My Saved Trip Plans</h4>
+              <p style="margin:0; font-size:12.5px; color:var(--muted);" id="profilePlansStatus">Manage your custom itineraries &amp; schedules</p>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn secondary small" onclick="openSavedPlansTab()">View All Plans →</button>
+              <button class="btn accent small" onclick="openPlanTripModal()">+ New Plan</button>
+            </div>
           </div>
+          <div id="profileSavedPlansList" class="saved-plans-grid" style="grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;"></div>
         </div>
 
         <!-- Saved Trips Preview -->
@@ -757,7 +829,63 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=2"></script>
+  <!-- 8. SAVE TRIP PLAN MODAL -->
+  <div class="modal-overlay hidden" id="savePlanModalOverlay" onclick="closeSavePlanModal()"></div>
+  <div class="modal-card hidden" id="savePlanModal" style="max-width: 540px; width: 95%;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:12px; margin-bottom:16px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:22px;">💾</span>
+        <h3 style="margin:0; font-size:18px;" id="savePlanModalTitle">Save Trip Plan</h3>
+      </div>
+      <button class="btn-close-modal" onclick="closeSavePlanModal()" style="background:none; border:none; font-size:20px; cursor:pointer;">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="savePlanForm" onsubmit="handleSavePlanSubmit(event)">
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:13px; font-weight:700; margin-bottom:6px; color:#0f172a;">Trip Plan Name *</label>
+          <input type="text" id="spTitle" required placeholder="e.g. 5-Day Goa Winter Vacation" style="width:100%; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; font-weight:600;">
+        </div>
+
+        <div style="display:flex; gap:12px; margin-bottom:14px;">
+          <div style="flex:1;">
+            <label style="display:block; font-size:13px; font-weight:700; margin-bottom:6px; color:#0f172a;">Planning Status</label>
+            <select id="spStatus" style="width:100%; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:14px; font-weight:600;">
+              <option value="Planning" selected>🟡 In Planning</option>
+              <option value="Ready">🟢 Ready for Booking</option>
+              <option value="Booked">🔵 Booked</option>
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="display:block; font-size:13px; font-weight:700; margin-bottom:6px; color:#0f172a;">Target Destination</label>
+            <input type="text" id="spDestDisplay" readonly style="width:100%; padding:10px 12px; border:1.5px solid #e2e8f0; background:#f8fafc; border-radius:8px; font-size:14px; color:#475569; font-weight:600;">
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label style="display:block; font-size:13px; font-weight:700; margin-bottom:6px; color:#0f172a;">Trip Notes &amp; Checklist (Optional)</label>
+          <textarea id="spNotes" rows="3" placeholder="e.g. Bring swimwear, book water sports at Baga Beach, reserve hotel with beach view" style="width:100%; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:13.5px; resize:vertical;"></textarea>
+        </div>
+
+        <div style="background:#f8fafc; padding:12px 14px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:18px; font-size:12.5px; color:#475569;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span>🗓️ Duration: <strong id="spSummaryDuration">3 Days</strong></span>
+            <span>👥 Travellers: <strong id="spSummaryTravellers">2 Solo</strong></span>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span>💰 Budget: <strong id="spSummaryBudget">₹0</strong></span>
+            <span>🎪 Est. Activity Cost: <strong id="spSummaryCost">₹0</strong></span>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button type="button" class="btn secondary" onclick="closeSavePlanModal()">Cancel</button>
+          <button type="submit" class="btn accent" id="btnConfirmSavePlan" style="padding:10px 22px; font-weight:700;">💾 Save Trip Plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/app.js?v=4"></script>
 </body>
 
 </html>

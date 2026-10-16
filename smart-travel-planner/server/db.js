@@ -85,6 +85,35 @@ async function initDB() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // 5b. Create planned_trips table for saving & continuing full customized itineraries
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS planned_trips (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        title VARCHAR(200) NOT NULL,
+        destination_id INT NOT NULL,
+        destination_name VARCHAR(150) NOT NULL,
+        start_date VARCHAR(50),
+        duration_days INT DEFAULT 3,
+        travellers INT DEFAULT 1,
+        group_type VARCHAR(50) DEFAULT 'solo',
+        pace_style VARCHAR(50) DEFAULT 'balanced',
+        budget INT DEFAULT 0,
+        activity_cost INT DEFAULT 0,
+        hotel_name VARCHAR(150),
+        hotel_price INT DEFAULT 0,
+        transport_name VARCHAR(150),
+        transport_price INT DEFAULT 0,
+        interests TEXT,
+        itinerary_data LONGTEXT,
+        notes TEXT,
+        status VARCHAR(50) DEFAULT 'Planning',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     // 6. Create custom destinations table added by Admin
     await pool.query(`
       CREATE TABLE IF NOT EXISTS custom_destinations (

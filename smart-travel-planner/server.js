@@ -233,6 +233,201 @@ app.get('/api/trips/:userId', async (req, res) => {
   }
 });
 
+// ─── PLANNED TRIPS & CUSTOM ITINERARY APIs ─────────────────────────────────
+
+// 1. Create or Save a Planned Trip
+app.post('/api/planned-trips', async (req, res) => {
+  try {
+    const {
+      id,
+      userId,
+      title,
+      destinationId,
+      destinationName,
+      startDate,
+      durationDays,
+      travellers,
+      groupType,
+      paceStyle,
+      budget,
+      activityCost,
+      hotelName,
+      hotelPrice,
+      transportName,
+      transportPrice,
+      interests,
+      itineraryData,
+      notes,
+      status
+    } = req.body;
+
+    if (!destinationName) {
+      return res.status(400).json({ error: 'Destination name is required.' });
+    }
+
+    const pool = getPool();
+    const finalTitle = title ? title.trim() : `${durationDays || 3}-Day ${destinationName} Plan`;
+    const finalInterests = typeof interests === 'object' ? JSON.stringify(interests) : (interests || '');
+    const finalItinerary = typeof itineraryData === 'object' ? JSON.stringify(itineraryData) : (itineraryData || '[]');
+    const finalStatus = status || 'Planning';
+
+    if (id) {
+      // Update existing planned trip
+      await pool.query(
+        `UPDATE planned_trips SET
+           title = ?, destination_id = ?, destination_name = ?, start_date = ?,
+           duration_days = ?, travellers = ?, group_type = ?, pace_style = ?,
+           budget = ?, activity_cost = ?, hotel_name = ?, hotel_price = ?,
+           transport_name = ?, transport_price = ?, interests = ?,
+           itinerary_data = ?, notes = ?, status = ?
+         WHERE id = ?`,
+        [
+          finalTitle,
+          destinationId || 1,
+          destinationName.trim(),
+          startDate || '',
+          durationDays || 3,
+          travellers || 1,
+          groupType || 'solo',
+          paceStyle || 'balanced',
+          budget || 0,
+          activityCost || 0,
+          hotelName || '',
+          hotelPrice || 0,
+          transportName || '',
+          transportPrice || 0,
+          finalInterests,
+          finalItinerary,
+          notes || '',
+          finalStatus,
+          id
+        ]
+      );
+
+      return res.json({
+        success: true,
+        message: 'Trip plan updated successfully!',
+        planId: id
+      });
+    } else {
+      // Insert new planned trip
+      const [result] = await pool.query(
+        `INSERT INTO planned_trips
+           (user_id, title, destination_id, destination_name, start_date,
+            duration_days, travellers, group_type, pace_style, budget,
+            activity_cost, hotel_name, hotel_price, transport_name,
+            transport_price, interests, itinerary_data, notes, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId || null,
+          finalTitle,
+          destinationId || 1,
+          destinationName.trim(),
+          startDate || '',
+          durationDays || 3,
+          travellers || 1,
+          groupType || 'solo',
+          paceStyle || 'balanced',
+          budget || 0,
+          activityCost || 0,
+          hotelName || '',
+          hotelPrice || 0,
+          transportName || '',
+          transportPrice || 0,
+          finalInterests,
+          finalItinerary,
+          notes || '',
+          finalStatus
+        ]
+      );
+
+      return res.status(201).json({
+        success: true,
+        message: 'Trip plan saved successfully! You can access and manage it anytime.',
+        planId: result.insertId
+      });
+    }
+  } catch (err) {
+    console.error('Error in POST /api/planned-trips:', err);
+    return res.status(500).json({ error: 'Server error while saving planned trip.' });
+  }
+});
+
+// 2. Fetch all planned trips for a user
+app.get('/api/planned-trips/user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const pool = getPool();
+    const [rows] = await pool.query(
+      `SELECT * FROM planned_trips WHERE user_id = ? ORDER BY updated_at DESC`,
+      [userId]
+    );
+
+    const plans = rows.map(p => {
+      let parsedItinerary = [];
+      let parsedInterests = [];
+      try { parsedItinerary = JSON.parse(p.itinerary_data || '[]'); } catch (_) {}
+      try { parsedInterests = JSON.parse(p.interests || '[]'); } catch (_) {
+        parsedInterests = p.interests ? p.interests.split(',') : [];
+      }
+      return {
+        ...p,
+        itineraryData: parsedItinerary,
+        interests: parsedInterests
+      };
+    });
+
+    return res.json({ success: true, plans });
+  } catch (err) {
+    console.error('Error in GET /api/planned-trips/user/:userId:', err);
+    return res.status(500).json({ error: 'Server error while fetching planned trips.' });
+  }
+});
+
+// 3. Fetch single planned trip details
+app.get('/api/planned-trips/detail/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = getPool();
+    const [rows] = await pool.query(`SELECT * FROM planned_trips WHERE id = ?`, [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Trip plan not found.' });
+    }
+    const plan = rows[0];
+    let parsedItinerary = [];
+    let parsedInterests = [];
+    try { parsedItinerary = JSON.parse(plan.itinerary_data || '[]'); } catch (_) {}
+    try { parsedInterests = JSON.parse(plan.interests || '[]'); } catch (_) {
+      parsedInterests = plan.interests ? plan.interests.split(',') : [];
+    }
+
+    return res.json({
+      success: true,
+      plan: {
+        ...plan,
+        itineraryData: parsedItinerary,
+        interests: parsedInterests
+      }
+    });
+  } catch (err) {
+    console.error('Error in GET /api/planned-trips/detail/:id:', err);
+    return res.status(500).json({ error: 'Server error while fetching trip plan detail.' });
+  }
+});
+
+// 4. Delete planned trip
+app.delete('/api/planned-trips/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = getPool();
+    await pool.query('DELETE FROM planned_trips WHERE id = ?', [id]);
+    return res.json({ success: true, message: 'Trip plan deleted successfully.' });
+  } catch (err) {
+    console.error('Error in DELETE /api/planned-trips/:id:', err);
+    return res.status(500).json({ error: 'Server error while deleting trip plan.' });
+  }
+});
+
 const {
   sendTripPlannedEmail,
   sendTripApprovedEmail,
@@ -548,10 +743,14 @@ app.get('/api/admin/users', async (req, res) => {
     const [trips] = await pool.query(
       `SELECT * FROM saved_trips ORDER BY added_at DESC`
     );
+    const [plannedTrips] = await pool.query(
+      `SELECT * FROM planned_trips ORDER BY updated_at DESC`
+    );
 
     const usersWithCarts = users.map(u => ({
       ...u,
-      cart: trips.filter(t => t.user_id === u.id)
+      cart: trips.filter(t => t.user_id === u.id),
+      plannedTrips: plannedTrips.filter(p => p.user_id === u.id)
     }));
 
     return res.json({ success: true, users: usersWithCarts });

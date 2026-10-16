@@ -166,6 +166,8 @@
       }
 
       localStorage.setItem(SESSION_KEY, JSON.stringify(data.user));
+      // Remove legacy shared key so no previous account's plans bleed into this session
+      localStorage.removeItem('stp_saved_plans');
       showMsg('loginMsg', "Login successful! Redirecting...", "success");
       setTimeout(() => {
         window.location.href = "index.html";
@@ -177,6 +179,8 @@
         return showMsg('loginMsg', "Invalid email or password.", "error");
       }
       localStorage.setItem(SESSION_KEY, JSON.stringify(users[email]));
+      // Remove legacy shared key so no previous account's plans bleed into this session
+      localStorage.removeItem('stp_saved_plans');
       showMsg('loginMsg', "Login successful! Redirecting...", "success");
       setTimeout(() => {
         window.location.href = "index.html";
