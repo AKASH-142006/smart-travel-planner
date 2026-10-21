@@ -1,0 +1,479 @@
+/* ==========================================================================
+   SMART TRAVEL PLANNER — REVIEWS & NOTIFICATIONS MODULES (LUXURY THEME)
+   ========================================================================== */
+
+.feature-page {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.feature-card {
+  min-width: 0;
+  padding: 30px;
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition-fast);
+}
+
+.feature-card:hover {
+  border-color: #cbd5e1;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.15fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.feature-card-heading,
+.notification-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.feature-card-heading h3 {
+  margin: 4px 0 0;
+  color: var(--primary);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.feature-eyebrow {
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.feature-heading-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  font-size: 22px;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.15);
+}
+
+.feature-helper {
+  margin: 12px 0 22px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+#reviewForm {
+  display: grid;
+  gap: 12px;
+}
+
+#reviewForm label,
+.review-controls > label,
+.review-control-row label {
+  margin-top: 6px;
+  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+#reviewForm input:not([type="hidden"]),
+#reviewForm select,
+#reviewForm textarea,
+.review-controls select {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  color: var(--text);
+  background: #ffffff;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transition: var(--transition-fast);
+}
+
+#reviewForm input:focus,
+#reviewForm select:focus,
+#reviewForm textarea:focus,
+.review-controls select:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.14);
+}
+
+#reviewForm textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* Star Picker */
+.review-star-picker {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.review-star-picker button {
+  padding: 0 4px;
+  color: #cbd5e1;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 34px;
+  line-height: 1.1;
+  transition: color 0.15s, transform 0.15s;
+}
+
+.review-star-picker button:hover {
+  transform: scale(1.15);
+  color: #fbbf24;
+}
+
+.review-star-picker button.selected,
+.review-stars {
+  color: #f59e0b;
+  text-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.feature-message {
+  min-height: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.feature-message:not(:empty) {
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+}
+
+.feature-message.error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.feature-message.success {
+  color: #047857;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+#reviewSubmitButton {
+  margin-top: 10px;
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+#reviewSubmitButton:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.review-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.review-control-row {
+  display: grid;
+  grid-template-columns: auto minmax(100px, 1fr) auto minmax(130px, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.review-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 70px;
+  margin: 18px 0;
+  padding: 14px 18px;
+  border: 1.5px solid #dbeafe;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #f8fbff, #eff6ff);
+}
+
+.review-average {
+  color: var(--primary);
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: -1px;
+}
+
+.review-summary-caption {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.review-list {
+  display: grid;
+  gap: 16px;
+}
+
+.review-item {
+  padding: 20px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  transition: var(--transition-fast);
+}
+
+.review-item:hover {
+  border-color: #cbd5e1;
+  box-shadow: var(--shadow-sm);
+}
+
+.review-item-top,
+.review-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.review-stars {
+  letter-spacing: 2px;
+  white-space: nowrap;
+  font-size: 16px;
+}
+
+.review-item h4 {
+  margin: 10px 0 6px;
+  color: var(--primary);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.review-item p {
+  margin: 0 0 14px;
+  color: #475569;
+  font-size: 13.5px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.review-item-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 11.5px;
+  gap: 12px;
+}
+
+.review-load-more {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.feature-state {
+  padding: 24px 16px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.feature-state.error {
+  color: #b91c1c;
+}
+
+/* Notifications Dropdown & Page */
+.notification-dropdown {
+  position: absolute;
+  z-index: 120;
+  top: calc(100% + 12px);
+  right: 0;
+  width: min(400px, calc(100vw - 24px));
+  overflow: hidden;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+}
+
+.notification-dropdown-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.notification-dropdown-header strong {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.text-action {
+  padding: 4px 8px;
+  color: var(--blue);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-xs);
+}
+
+.text-action:hover {
+  background: #eff6ff;
+}
+
+.notification-dropdown-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.notification-dropdown-item,
+.notification-page-item {
+  display: flex;
+  width: 100%;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 20px;
+  color: var(--text);
+  background: white;
+  border: 0;
+  border-bottom: 1px solid #f1f5f9;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.notification-dropdown-item:hover,
+.notification-page-item:hover {
+  background: #f8fbff;
+}
+
+.notification-dropdown-item.unread,
+.notification-page-item.unread {
+  background: #f0f7ff;
+}
+
+.notification-icon {
+  display: grid;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  font-size: 18px;
+}
+
+.notification-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.notification-copy strong {
+  display: block;
+  color: var(--primary);
+  font-size: 13.5px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.notification-copy p {
+  margin: 4px 0 6px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.notification-copy time {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.notification-page-card {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.notification-page-list {
+  display: grid;
+}
+
+.notification-page-item {
+  padding: 20px 24px;
+}
+
+.notification-page-item .notification-copy strong {
+  font-size: 15px;
+}
+
+.notification-page-item .notification-copy p {
+  font-size: 13.5px;
+}
+
+.booking-date-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.booking-date-fields label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.booking-date-fields input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.booking-date-fields input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+@media (max-width: 900px) {
+  .review-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .feature-card {
+    padding: 20px 16px;
+  }
+
+  .review-control-row {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-date-fields {
+    grid-template-columns: 1fr;
+  }
+}

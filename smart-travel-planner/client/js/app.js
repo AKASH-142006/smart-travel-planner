@@ -433,6 +433,9 @@ document.querySelectorAll('#tabNav button').forEach(btn => {
       }, 50);
     }
 
+    if (btn.dataset.tab === 'reviews') loadReviewPanel();
+    if (btn.dataset.tab === 'notifications') loadNotificationsPage();
+
     // Scroll smoothly to top of main content
     document.querySelector('.main-content').scrollIntoView({ behavior: 'smooth' });
   });
@@ -491,6 +494,7 @@ function renderAuthState() {
     if (headerRegisterBtn) headerRegisterBtn.classList.remove('hidden');
     if (headerUserView) headerUserView.classList.add('hidden');
   }
+  updateFeatureAuthUI();
 }
 
 (function restoreSession(){
@@ -505,6 +509,7 @@ function renderAuthState() {
   renderAuthState();
   loadCartFromDB(); // Load cart from MySQL
   loadSavedPlansFromStorage(); // Load saved trip plans from MySQL/LocalStorage
+  updateNotificationCount();
 })();
 
 // ---------------- Trip Cart Drawer Functionality ----------------
@@ -1844,6 +1849,16 @@ function openBookingModal() {
     alert("Your trip cart is empty. Please add destinations before booking.");
     return;
   }
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const selectedDestinationId = window.currentTrip && window.currentTrip.destId;
+  const matchingItinerary = plannerConfig && plannerConfig.dest &&
+    (!selectedDestinationId || Number(selectedDestinationId) === Number(plannerConfig.dest.id));
+  const startDateInput = document.getElementById('bookStartDate');
+  startDateInput.min = todayKey;
+  startDateInput.value = (matchingItinerary && plannerConfig.startDate) || todayKey;
+  document.getElementById('bookDurationDays').value =
+    (matchingItinerary && plannerConfig.days) || 3;
   document.getElementById('bookingModalOverlay').classList.remove('hidden');
   document.getElementById('bookingModal').classList.remove('hidden');
   toggleCartDrawer(); // Close the cart drawer if it's open
@@ -1861,6 +1876,8 @@ async function handleBookingSubmit(event) {
   const email = document.getElementById('bookEmail')?.value || (currentUser && currentUser.email) || 'customer@example.com';
   const phone = document.getElementById('bookPhone').value;
   const address = document.getElementById('bookAddress').value;
+  const tripStartDate = document.getElementById('bookStartDate').value;
+  const durationDays = Number(document.getElementById('bookDurationDays').value);
   
   if (!name || !phone || !address) {
     alert("Please fill in all the details.");
@@ -1870,30 +1887,13 @@ async function handleBookingSubmit(event) {
   const totalPaid = parseFloat(document.getElementById('totalBudget').value) || 0;
   const now = new Date();
   const receiptNo = 'STP-' + now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2) + '-' + Math.floor(Math.random()*9000+1000);
-  
-  window._lastBookingReceiptNo = receiptNo;
-  window._lastBookingEmail = email;
-
-  // Add paid trip to cart
-  const bookedTrip = {
-    id: window.currentTrip.destId || Date.now(),
-    name: window.currentTrip.destName || 'Custom Trip',
-    price: totalPaid,
-    status: 'Payment Completed (Pending Admin Review)',
-    description: `Includes ${window.currentTrip.hotelName || 'Hotel'} & ${window.currentTrip.transportName || 'Transport'}`,
-    img: destinations.find(d => d.id === window.currentTrip.destId)?.img || 'assets/goa.jpg'
-  };
-  
-  tripCart.unshift(bookedTrip);
-  updateCartUI();
-  
-  closeBookingModal();
+  window._paymentConfirmed = false;
 
   // Send booking to database & trigger customer email
   try {
     const res = await fetch(`${API_BASE}/bookings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: featureApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         userId: currentUser ? currentUser.id : null,
         customerName: name,
@@ -1907,18 +1907,43 @@ async function handleBookingSubmit(event) {
         transportName: window.currentTrip.transportName || 'Selected Transit',
         transportPrice: window.currentTrip.transportPrice || 0,
         totalPrice: totalPaid,
-        receiptNo: receiptNo
+        receiptNo: receiptNo,
+        tripStartDate,
+        durationDays,
+        budget: Number(document.getElementById('totalBudget').value) || totalPaid,
+        itineraryData: currentItinerary
       })
     });
     const data = await res.json();
-    if (data.success) {
-      alert(`🎉 Trip Plan Successfully Submitted!\n\n📨 A confirmation email notification has been dispatched to ${email}.\nYour trip is now awaiting Admin review and approval in the Admin Portal.`);
+    if (!res.ok || !data.success) {
+      alert(data.error || 'Booking could not be confirmed. Please try again.');
+      return;
     }
+
+    window._paymentConfirmed = true;
+    window._lastBookingReceiptNo = receiptNo;
+    window._lastBookingEmail = email;
+
+    const bookedTrip = {
+      id: window.currentTrip.destId || Date.now(),
+      name: window.currentTrip.destName || 'Custom Trip',
+      price: totalPaid,
+      status: 'Payment Completed (Pending Admin Review)',
+      description: `Includes ${window.currentTrip.hotelName || 'Hotel'} & ${window.currentTrip.transportName || 'Transport'}`,
+      img: destinations.find(d => d.id === window.currentTrip.destId)?.img || 'assets/goa.jpg'
+    };
+    tripCart.unshift(bookedTrip);
+    updateCartUI();
+    closeBookingModal();
+
+    alert(`🎉 Trip Plan Successfully Submitted!\n\n📨 A confirmation email notification has been dispatched to ${email}.\nYour trip is now awaiting Admin review and approval in the Admin Portal.`);
   } catch (err) {
-    console.warn('Booking API offline fallback:', err);
+    console.error('Booking could not be confirmed:', err);
+    alert('Booking could not be confirmed. Please check your connection and try again.');
+    return;
   }
 
-  // Stay on budget tab and show the receipt
+  // Show the receipt only after the booking has been confirmed.
   document.querySelector('[data-tab="budget"]').click();
   setTimeout(() => {
     generateTripReceipt();
@@ -2352,8 +2377,16 @@ function proceedToPlanTrip(transportName, transportPrice) {
 }
 
 function confirmAndPayTrip() {
+  window._paymentConfirmed = false;
+  window._lastBookingReceiptNo = null;
+
   const total = parseFloat(document.getElementById('totalBudget').value) || 0;
   const tripTitle = window.currentTrip.destName ? `Trip to ${window.currentTrip.destName}` : 'Your Custom Trip';
+  const receiptContainer = document.getElementById('tripReceiptContainer');
+  if (receiptContainer) {
+    receiptContainer.innerHTML = '';
+    receiptContainer.classList.add('hidden');
+  }
 
   // Open booking modal
   document.getElementById('bookingModalOverlay').classList.remove('hidden');
@@ -2370,6 +2403,8 @@ function confirmAndPayTrip() {
 }
 
 function generateTripReceipt() {
+  if (!window._paymentConfirmed || !window._lastBookingReceiptNo) return;
+
   const trip = window.currentTrip;
   const total = window._pendingPaymentTotal || parseFloat(document.getElementById('totalBudget').value) || 0;
   const now = new Date();
@@ -2667,6 +2702,7 @@ function generateItinerary(e) {
     currentItinerary.push({
       day: i+1,
       date: dayDate.toDateString(),
+      dateISO: `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`,
       activities: dayActivities
     });
   }
@@ -3144,7 +3180,7 @@ async function handleSavePlanSubmit(event) {
   try {
     const res = await fetch(`${API_BASE}/planned-trips`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: featureApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload)
     });
     const data = await res.json();
@@ -3355,3 +3391,553 @@ function showToast(msg) {
   }, 3500);
 }
 
+// ---------------- Reviews & In-App Notifications ----------------
+let selectedReviewRating = 0;
+let reviewPage = 1;
+let reviewHasMore = false;
+let reviewRequestVersion = 0;
+let notificationPage = 1;
+let notificationHasMore = false;
+let notificationRecords = [];
+
+function featureApiHeaders(headers = {}) {
+  const result = { ...headers };
+  if (currentUser && currentUser.apiToken) {
+    result.Authorization = `Bearer ${currentUser.apiToken}`;
+  }
+  return result;
+}
+
+function featureEscape(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]);
+}
+
+function updateFeatureAuthUI() {
+  const hasApiSession = Boolean(currentUser && currentUser.apiToken);
+  const notificationNav = document.getElementById('notificationNav');
+  if (notificationNav) notificationNav.classList.toggle('hidden', !hasApiSession);
+  const form = document.getElementById('reviewForm');
+  if (form) {
+    form.querySelectorAll('input, select, textarea, button').forEach(control => {
+      control.disabled = !hasApiSession;
+    });
+    const message = document.getElementById('reviewFormMessage');
+    if (message && !hasApiSession) {
+      message.textContent = 'Log in with your account to submit a review for a completed trip.';
+      message.className = 'feature-message';
+    }
+  }
+}
+
+async function featureApiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: featureApiHeaders(options.headers || {})
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'The request could not be completed.');
+  return data;
+}
+
+function getReviewTargetOptions() {
+  const targets = [];
+  destinations.forEach(destination => {
+    if (destination && destination.name) {
+      targets.push({ type: 'destination', name: destination.name });
+    }
+  });
+  (typeof hotelsData !== 'undefined' ? hotelsData : []).forEach(hotel => {
+    if (hotel && hotel.name) targets.push({ type: 'hotel', name: hotel.name });
+  });
+  const unique = new Map();
+  targets.forEach(target => unique.set(`${target.type}|${target.name}`, target));
+  return [...unique.values()];
+}
+
+function reviewTargetValue(type, name) {
+  return `${type}|${encodeURIComponent(name)}`;
+}
+
+function parseReviewTarget(value) {
+  if (!value) return null;
+  const separator = value.indexOf('|');
+  if (separator < 0) return null;
+  return {
+    type: value.slice(0, separator),
+    name: decodeURIComponent(value.slice(separator + 1))
+  };
+}
+
+async function populateReviewTargets() {
+  // Populate the READ target selector
+  const readSelector = document.getElementById('reviewReadTarget');
+  // Populate the WRITE target selector
+  const writeSelector = document.getElementById('reviewWriteTarget');
+
+  const targetMap = new Map(
+    getReviewTargetOptions().map(target => [`${target.type}|${target.name}`, target])
+  );
+  const data = await featureApiRequest('/reviews/targets');
+  (data.targets || []).forEach(target => {
+    if (target.targetType && target.targetName) {
+      targetMap.set(`${target.targetType}|${target.targetName}`, {
+        type: target.targetType,
+        name: target.targetName
+      });
+    }
+  });
+  const targets = [...targetMap.values()];
+
+  if (readSelector) {
+    const previousValue = readSelector.value;
+    readSelector.innerHTML = targets.map(target =>
+      `<option value="${reviewTargetValue(target.type, target.name)}">${target.type === 'hotel' ? 'Hotel' : 'Destination'} · ${featureEscape(target.name)}</option>`
+    ).join('');
+    if (targets.some(target => reviewTargetValue(target.type, target.name) === previousValue)) {
+      readSelector.value = previousValue;
+    }
+    if (!targets.length) {
+      readSelector.innerHTML = '<option value="">No destinations or hotels available</option>';
+    }
+  }
+
+  if (writeSelector) {
+    const previousWrite = writeSelector.value;
+    writeSelector.innerHTML = '<option value="">Choose a destination or hotel...</option>' +
+      targets.map(target =>
+        `<option value="${reviewTargetValue(target.type, target.name)}">${target.type === 'hotel' ? '🏨 Hotel' : '✈️ Destination'}: ${featureEscape(target.name)}</option>`
+      ).join('');
+    if (targets.some(target => reviewTargetValue(target.type, target.name) === previousWrite)) {
+      writeSelector.value = previousWrite;
+    }
+    // Update hidden fields when write-target changes
+    writeSelector.addEventListener('change', () => {
+      const parsed = parseReviewTarget(writeSelector.value);
+      const typeField = document.getElementById('reviewTargetType');
+      const nameField = document.getElementById('reviewTargetName');
+      if (typeField) typeField.value = parsed ? parsed.type : 'destination';
+      if (nameField) nameField.value = parsed ? parsed.name : '';
+    });
+  }
+}
+
+function setReviewRating(rating) {
+  selectedReviewRating = rating;
+  const input = document.getElementById('reviewRating');
+  if (input) input.value = String(rating);
+  document.querySelectorAll('#reviewStarPicker button').forEach(button => {
+    const isSelected = Number(button.dataset.rating) <= rating;
+    button.classList.toggle('selected', isSelected);
+    button.setAttribute('aria-pressed', String(Number(button.dataset.rating) === rating));
+  });
+}
+
+async function loadEligibleReviewBookings() {
+  const selector = document.getElementById('reviewBooking');
+  if (!selector) return;
+  if (!currentUser || !currentUser.apiToken) {
+    selector.innerHTML = '<option value="">None / General Review</option>';
+    return;
+  }
+
+  selector.innerHTML = '<option value="">Loading bookings...</option>';
+  try {
+    const data = await featureApiRequest('/reviews/eligible-bookings');
+    window.eligibleReviewBookings = data.bookings || [];
+    selector.innerHTML = '<option value="">None / General Review</option>' +
+      window.eligibleReviewBookings.map(booking => {
+        const date = String(booking.trip_start_date || '').slice(0, 10);
+        const label = featureEscape(booking.destination_name || 'Booking #' + booking.id);
+        return `<option value="${booking.id}">${label}${date ? ' · ' + date : ''}</option>`;
+      }).join('');
+  } catch (err) {
+    console.error('Unable to load bookings for review:', err);
+    selector.innerHTML = '<option value="">None / General Review</option>';
+  }
+}
+
+async function loadReviewPanel() {
+  let targetError = null;
+  try {
+    await populateReviewTargets();
+  } catch (err) {
+    console.error('Unable to load booking review targets:', err);
+    targetError = err;
+  }
+  loadEligibleReviewBookings();
+  await loadReviewList(true);
+  if (targetError) {
+    const message = document.getElementById('reviewListMessage');
+    if (message) {
+      message.textContent = `Live booking targets could not be loaded: ${targetError.message}`;
+      message.className = 'feature-state error';
+    }
+  }
+}
+
+function reviewQueryParameters(page = 1) {
+  const target = parseReviewTarget(document.getElementById('reviewReadTarget')?.value);
+  const params = new URLSearchParams({ page: String(page), limit: '8' });
+  if (target) {
+    params.set('targetType', target.type);
+    params.set('targetName', target.name);
+  }
+  const rating = document.getElementById('reviewRatingFilter')?.value;
+  if (rating) params.set('rating', rating);
+  params.set('sort', document.getElementById('reviewSort')?.value || 'newest');
+  return { target, params };
+}
+
+async function loadReviewList(reset = true) {
+  const list = document.getElementById('reviewList');
+  const summary = document.getElementById('reviewSummary');
+  const message = document.getElementById('reviewListMessage');
+  const loadMoreButton = document.getElementById('reviewLoadMore');
+  if (!list || !summary || !message) return;
+  if (reset) {
+    reviewPage = 1;
+    reviewHasMore = false;
+    list.innerHTML = '';
+    message.textContent = 'Loading reviews...';
+    message.className = 'feature-state';
+  }
+  const requestVersion = ++reviewRequestVersion;
+  const { target, params } = reviewQueryParameters(reset ? 1 : reviewPage + 1);
+  if (!target) {
+    message.textContent = 'No review destinations are available.';
+    summary.innerHTML = '';
+    return;
+  }
+
+  try {
+    if (reset) {
+      const summaryParams = new URLSearchParams({
+        targetType: target.type,
+        targetName: target.name
+      });
+      const summaryData = await featureApiRequest(`/reviews/summary?${summaryParams.toString()}`);
+      if (requestVersion !== reviewRequestVersion) return;
+      summary.innerHTML = summaryData.totalReviews
+        ? `<span class="review-average">${Number(summaryData.averageRating).toFixed(1)}</span>
+           <span class="review-stars" aria-label="${Number(summaryData.averageRating).toFixed(1)} out of 5 stars">★★★★★</span>
+           <span class="review-summary-caption">${summaryData.totalReviews} verified review${summaryData.totalReviews === 1 ? '' : 's'}</span>`
+        : '<span class="feature-state">No reviews yet — be the first to share a completed trip.</span>';
+    }
+
+    const data = await featureApiRequest(`/reviews?${params.toString()}`);
+    if (requestVersion !== reviewRequestVersion) return;
+    const reviews = data.reviews || [];
+    if (reset) list.innerHTML = '';
+    if (!reviews.length && reset) {
+      message.textContent = 'No reviews match this selection yet.';
+      message.className = 'feature-state';
+    } else {
+      message.textContent = '';
+      message.className = 'feature-state';
+      list.insertAdjacentHTML('beforeend', reviews.map(review => `
+        <article class="review-item">
+          <div class="review-item-top">
+            <strong>${featureEscape(review.reviewerName)}</strong>
+            <span class="review-stars" aria-label="${review.rating} out of 5 stars">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</span>
+          </div>
+          <h4>${featureEscape(review.title)}</h4>
+          <p>${featureEscape(review.description)}</p>
+          <div class="review-item-meta">
+            <span>${featureEscape(review.tripType)} trip</span>
+            <span>·</span>
+            <time>${featureEscape(String(review.visitDate || '').slice(0, 10))}</time>
+          </div>
+        </article>
+      `).join(''));
+    }
+    reviewPage = data.page || reviewPage;
+    reviewHasMore = Boolean(data.hasMore);
+    if (loadMoreButton) loadMoreButton.classList.toggle('hidden', !reviewHasMore);
+  } catch (err) {
+    console.error('Unable to load reviews:', err);
+    if (reset) {
+      message.textContent = err.message;
+      message.className = 'feature-state error';
+    }
+    if (loadMoreButton) loadMoreButton.classList.add('hidden');
+  }
+}
+
+async function loadMoreReviews() {
+  if (!reviewHasMore) return;
+  await loadReviewList(false);
+}
+
+async function submitReview(event) {
+  event.preventDefault();
+  const message = document.getElementById('reviewFormMessage');
+  const submitButton = document.getElementById('reviewSubmitButton');
+  const bookingId = document.getElementById('reviewBooking')?.value || '';
+  const rating = Number(document.getElementById('reviewRating').value);
+  // Get target from the new write-target selector
+  const writeTarget = document.getElementById('reviewWriteTarget');
+  const parsed = writeTarget ? parseReviewTarget(writeTarget.value) : null;
+  const targetType = (parsed && parsed.type) || document.getElementById('reviewTargetType')?.value || 'destination';
+  const targetName = (parsed && parsed.name) || document.getElementById('reviewTargetName')?.value || '';
+  if (!currentUser || !currentUser.apiToken) {
+    message.textContent = 'Log in again to submit a review.';
+    message.className = 'feature-message error';
+    return;
+  }
+  if (!targetName) {
+    message.textContent = 'Please choose a destination or hotel to review.';
+    message.className = 'feature-message error';
+    return;
+  }
+  if (!rating) {
+    message.textContent = 'Please select a star rating.';
+    message.className = 'feature-message error';
+    return;
+  }
+
+  submitButton.disabled = true;
+  submitButton.textContent = 'Submitting...';
+  message.textContent = '';
+  message.className = 'feature-message';
+  try {
+    await featureApiRequest('/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bookingId: bookingId || null,
+        targetType,
+        targetName,
+        rating,
+        title: document.getElementById('reviewTitle').value,
+        description: document.getElementById('reviewDescription').value,
+        tripType: document.getElementById('reviewTripType').value || 'Solo'
+      })
+    });
+    message.textContent = 'Your review has been submitted. Thank you for helping other travellers!';
+    message.className = 'feature-message success';
+    document.getElementById('reviewTitle').value = '';
+    document.getElementById('reviewDescription').value = '';
+    document.getElementById('reviewTripType').value = '';
+    setReviewRating(0);
+    await loadReviewList(true);
+  } catch (err) {
+    console.error('Unable to submit review:', err);
+    message.textContent = err.message;
+    message.className = 'feature-message error';
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Submit review';
+  }
+}
+
+function notificationIcon(type) {
+  return ({
+    booking_confirmation: '✅',
+    trip_reminder: '🧳',
+    itinerary_reminder: '🗺️',
+    budget_alert: '💰',
+    post_trip_review: '⭐'
+  })[type] || '🔔';
+}
+
+function notificationMarkup(notification, pageStyle = false) {
+  const createdDate = notification.createdAt ? new Date(notification.createdAt) : null;
+  const dateLabel = createdDate && !Number.isNaN(createdDate.getTime())
+    ? createdDate.toLocaleString()
+    : '';
+  const className = `${pageStyle ? 'notification-page-item' : 'notification-dropdown-item'}${notification.isRead ? '' : ' unread'}`;
+  return `<button type="button" class="${className}" onclick="openNotificationItem(${Number(notification.id)}, '${featureEscape(notification.type)}')">
+    <span class="notification-icon" aria-hidden="true">${notificationIcon(notification.type)}</span>
+    <span class="notification-copy">
+      <strong>${featureEscape(notification.title)}</strong>
+      <p>${featureEscape(notification.message)}</p>
+      <time>${featureEscape(dateLabel)}</time>
+    </span>
+  </button>`;
+}
+
+async function updateNotificationCount() {
+  const badge = document.getElementById('notificationBadge');
+  if (!badge || !currentUser || !currentUser.apiToken) return;
+  try {
+    const data = await featureApiRequest('/notifications/unread-count');
+    const count = Number(data.unreadCount) || 0;
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.classList.toggle('hidden', count === 0);
+  } catch (err) {
+    console.error('Unable to refresh notification count:', err);
+  }
+}
+
+async function loadNotificationDropdown() {
+  const list = document.getElementById('notificationDropdownList');
+  if (!list) return;
+  if (!currentUser || !currentUser.apiToken) {
+    list.innerHTML = '<div class="feature-state">Log in to see your travel updates.</div>';
+    return;
+  }
+  list.innerHTML = '<div class="feature-state">Loading notifications...</div>';
+  try {
+    const data = await featureApiRequest('/notifications?limit=6&page=1');
+    list.innerHTML = data.notifications.length
+      ? data.notifications.map(item => notificationMarkup(item)).join('')
+      : '<div class="feature-state">You are all caught up. No notifications yet.</div>';
+    const badge = document.getElementById('notificationBadge');
+    if (badge) {
+      badge.textContent = data.unreadCount > 99 ? '99+' : String(data.unreadCount);
+      badge.classList.toggle('hidden', Number(data.unreadCount) === 0);
+    }
+  } catch (err) {
+    console.error('Unable to load notification dropdown:', err);
+    list.innerHTML = `<div class="feature-state error">${featureEscape(err.message)}</div>`;
+  }
+}
+
+function toggleNotificationDropdown() {
+  const dropdown = document.getElementById('notificationDropdown');
+  const button = document.getElementById('notificationBell');
+  if (!dropdown || !button) return;
+  const willOpen = dropdown.classList.contains('hidden');
+  dropdown.classList.toggle('hidden', !willOpen);
+  button.setAttribute('aria-expanded', String(willOpen));
+  if (willOpen) loadNotificationDropdown();
+}
+
+function openNotificationsPage() {
+  document.getElementById('notificationDropdown')?.classList.add('hidden');
+  document.getElementById('notificationBell')?.setAttribute('aria-expanded', 'false');
+  document.querySelector('[data-tab="notifications"]')?.click();
+}
+
+async function loadNotificationsPage() {
+  const list = document.getElementById('notificationPageList');
+  const message = document.getElementById('notificationPageMessage');
+  const loadMoreButton = document.getElementById('notificationLoadMore');
+  if (!list || !message) return;
+  if (!currentUser || !currentUser.apiToken) {
+    list.innerHTML = '';
+    message.textContent = 'Log in with your account to view travel notifications.';
+    message.className = 'feature-state';
+    if (loadMoreButton) loadMoreButton.classList.add('hidden');
+    return;
+  }
+
+  notificationPage = 1;
+  list.innerHTML = '';
+  message.textContent = 'Loading your notifications...';
+  message.className = 'feature-state';
+  try {
+    const data = await featureApiRequest('/notifications?page=1&limit=20');
+    notificationRecords = data.notifications || [];
+    notificationHasMore = Boolean(data.hasMore);
+    message.textContent = notificationRecords.length ? '' : 'No notifications yet. Booking and trip updates will appear here.';
+    list.innerHTML = notificationRecords.map(item => notificationMarkup(item, true)).join('');
+    if (loadMoreButton) loadMoreButton.classList.toggle('hidden', !notificationHasMore);
+    await updateNotificationCount();
+  } catch (err) {
+    console.error('Unable to load notifications:', err);
+    message.textContent = err.message;
+    message.className = 'feature-state error';
+    if (loadMoreButton) loadMoreButton.classList.add('hidden');
+  }
+}
+
+async function loadMoreNotifications() {
+  if (!notificationHasMore || !currentUser || !currentUser.apiToken) return;
+  const list = document.getElementById('notificationPageList');
+  const loadMoreButton = document.getElementById('notificationLoadMore');
+  if (!list) return;
+  if (loadMoreButton) {
+    loadMoreButton.disabled = true;
+    loadMoreButton.textContent = 'Loading...';
+  }
+  try {
+    const nextPage = notificationPage + 1;
+    const data = await featureApiRequest(`/notifications?page=${nextPage}&limit=20`);
+    notificationPage = nextPage;
+    notificationHasMore = Boolean(data.hasMore);
+    notificationRecords = notificationRecords.concat(data.notifications || []);
+    list.insertAdjacentHTML('beforeend', (data.notifications || []).map(item => notificationMarkup(item, true)).join(''));
+    if (loadMoreButton) loadMoreButton.classList.toggle('hidden', !notificationHasMore);
+  } catch (err) {
+    console.error('Unable to load more notifications:', err);
+    const message = document.getElementById('notificationPageMessage');
+    if (message) {
+      message.textContent = err.message;
+      message.className = 'feature-state error';
+    }
+  } finally {
+    if (loadMoreButton) {
+      loadMoreButton.disabled = false;
+      loadMoreButton.textContent = 'Load more notifications';
+    }
+  }
+}
+
+async function markAllNotificationsRead() {
+  if (!currentUser || !currentUser.apiToken) return;
+  try {
+    await featureApiRequest('/notifications/read-all', { method: 'PATCH' });
+    await Promise.all([updateNotificationCount(), loadNotificationDropdown()]);
+    if (document.getElementById('notifications').classList.contains('active')) {
+      await loadNotificationsPage();
+    }
+  } catch (err) {
+    console.error('Unable to mark notifications as read:', err);
+    const message = document.getElementById('notificationPageMessage');
+    if (message) {
+      message.textContent = err.message;
+      message.className = 'feature-state error';
+    }
+  }
+}
+
+async function openNotificationItem(notificationId, type) {
+  try {
+    await featureApiRequest(`/notifications/${notificationId}/read`, { method: 'PATCH' });
+    await updateNotificationCount();
+    if (type === 'post_trip_review') {
+      document.querySelector('[data-tab="reviews"]')?.click();
+    } else if (type === 'itinerary_reminder') {
+      document.querySelector('[data-tab="savedplans"]')?.click();
+    } else {
+      document.querySelector('[data-tab="budget"]')?.click();
+    }
+    document.getElementById('notificationDropdown')?.classList.add('hidden');
+    document.getElementById('notificationBell')?.setAttribute('aria-expanded', 'false');
+    if (document.getElementById('notifications').classList.contains('active')) {
+      await loadNotificationsPage();
+    }
+  } catch (err) {
+    console.error('Unable to open notification:', err);
+  }
+}
+
+function initFeatureInteractions() {
+  document.querySelectorAll('#reviewStarPicker button').forEach(button => {
+    button.addEventListener('click', () => setReviewRating(Number(button.dataset.rating)));
+  });
+  document.getElementById('reviewBooking')?.addEventListener('change', syncReviewTargetChoices);
+  document.getElementById('reviewReadTarget')?.addEventListener('change', () => loadReviewList(true));
+  document.getElementById('reviewRatingFilter')?.addEventListener('change', () => loadReviewList(true));
+  document.getElementById('reviewSort')?.addEventListener('change', () => loadReviewList(true));
+  document.addEventListener('click', event => {
+    const nav = document.getElementById('notificationNav');
+    const dropdown = document.getElementById('notificationDropdown');
+    if (nav && dropdown && !nav.contains(event.target)) {
+      dropdown.classList.add('hidden');
+      document.getElementById('notificationBell')?.setAttribute('aria-expanded', 'false');
+    }
+  });
+  if (currentUser && currentUser.apiToken) {
+    window.setInterval(updateNotificationCount, 60 * 1000);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initFeatureInteractions);

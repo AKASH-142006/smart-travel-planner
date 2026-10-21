@@ -146,6 +146,81 @@ async function initDB() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        token_hash CHAR(64) PRIMARY KEY,
+        user_id INT NOT NULL,
+        expires_at DATETIME NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_sessions_user (user_id),
+        INDEX idx_user_sessions_expiry (expires_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        booking_id INT NULL DEFAULT NULL,
+        destination_id INT NULL,
+        target_type VARCHAR(20) NOT NULL,
+        target_name VARCHAR(150) NOT NULL,
+        rating TINYINT UNSIGNED NOT NULL,
+        title VARCHAR(120) NOT NULL,
+        description TEXT NOT NULL,
+        trip_type VARCHAR(20) NOT NULL,
+        visit_date DATE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_reviews_target (target_type, target_name, created_at),
+        INDEX idx_reviews_user (user_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    try {
+      await pool.query(`ALTER TABLE reviews MODIFY booking_id INT NULL DEFAULT NULL`);
+    } catch (_) {}
+
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        message TEXT NOT NULL,
+        notification_type VARCHAR(40) NOT NULL,
+        is_read BOOLEAN NOT NULL DEFAULT FALSE,
+        booking_id INT NULL,
+        planned_trip_id INT NULL,
+        dedupe_key VARCHAR(190) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_notification_dedupe (dedupe_key),
+        INDEX idx_notifications_user_created (user_id, created_at),
+        INDEX idx_notifications_user_unread (user_id, is_read),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Keep these additions safe for existing databases with previously-created tables.
+    const [bookingCols] = await pool.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings'`,
+      [dbName]
+    );
+    const existingBookingCols = new Set(bookingCols.map(c => c.COLUMN_NAME.toLowerCase()));
+    const bookingColumns = [
+      { name: 'trip_start_date', sql: 'ALTER TABLE bookings ADD COLUMN trip_start_date DATE NULL' },
+      { name: 'duration_days', sql: 'ALTER TABLE bookings ADD COLUMN duration_days SMALLINT UNSIGNED NOT NULL DEFAULT 3' },
+      { name: 'itinerary_data', sql: 'ALTER TABLE bookings ADD COLUMN itinerary_data LONGTEXT NULL' },
+      { name: 'budget', sql: 'ALTER TABLE bookings ADD COLUMN budget INT UNSIGNED NOT NULL DEFAULT 0' }
+    ];
+    for (const column of bookingColumns) {
+      if (!existingBookingCols.has(column.name)) {
+        await pool.query(column.sql);
+      }
+    }
+
     console.log(`[DB] MySQL connected & tables initialized successfully (Database: ${dbName})`);
 
     // 8. Safely migrate saved_trips table columns using INFORMATION_SCHEMA

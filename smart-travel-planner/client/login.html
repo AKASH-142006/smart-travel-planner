@@ -165,6 +165,7 @@
         return showMsg('loginMsg', data.error || "Invalid email or password.", "error");
       }
 
+      data.user.apiToken = data.token;
       localStorage.setItem(SESSION_KEY, JSON.stringify(data.user));
       // Remove legacy shared key so no previous account's plans bleed into this session
       localStorage.removeItem('stp_saved_plans');

@@ -4,8 +4,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Travel Planner — MakeMyTrip Style Travel Platform</title>
+  <title>Smart Travel Planner — MakeMyTrip &amp; Airbnb Style Travel Experience</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/features.css">
   <!-- Leaflet.js – free interactive maps, loaded locally (offline-friendly & instant) -->
   <link rel="stylesheet" href="css/leaflet.css">
   <script src="js/leaflet.js"></script>
@@ -29,22 +33,28 @@
       <!-- Quick Module Tabs -->
       <nav class="nav-links" id="tabNav">
         <button class="nav-tab-btn active" data-tab="destinations">
-          <span>✈️</span> 1. Destination
+          <span>✈️</span> Destinations
         </button>
         <button class="nav-tab-btn" data-tab="hotels">
-          <span>🏨</span> 2. Hotels
+          <span>🏨</span> Hotels
         </button>
         <button class="nav-tab-btn" data-tab="transport">
-          <span>🚗</span> 3. Transport
+          <span>🚗</span> Transport
         </button>
         <button class="nav-tab-btn" data-tab="mapweather">
-          <span>🗺️</span> 4. Map &amp; Weather
+          <span>🗺️</span> Map &amp; Weather
         </button>
         <button class="nav-tab-btn" data-tab="budget">
-          <span>💰</span> 5. Budget &amp; Book
+          <span>💰</span> Budget &amp; Book
         </button>
         <button class="nav-tab-btn" data-tab="savedplans" id="navSavedPlansBtn">
-          <span>🧭</span> 6. My Saved Plans <span class="cart-badge" id="savedPlansBadge" style="display:none; margin-left:3px; padding:2px 7px; font-size:11px;">0</span>
+          <span>🧭</span> Saved Plans <span class="cart-badge" id="savedPlansBadge" style="display:none; margin-left:3px; padding:2px 7px; font-size:11px;">0</span>
+        </button>
+        <button class="nav-tab-btn" data-tab="reviews">
+          <span>⭐</span> Reviews
+        </button>
+        <button class="nav-tab-btn" data-tab="notifications">
+          <span>🔔</span> Notifications
         </button>
         <button class="nav-tab-btn" data-tab="auth">
           <span>👤</span> Account
@@ -53,6 +63,23 @@
 
       <!-- Right Actions: Trip Cart + Auth -->
       <div class="nav-actions">
+        <div class="notification-nav" id="notificationNav">
+          <button type="button" class="notification-bell" id="notificationBell"
+            aria-label="Open notifications" aria-expanded="false" onclick="toggleNotificationDropdown()">
+            <span aria-hidden="true">🔔</span>
+            <span class="notification-badge hidden" id="notificationBadge">0</span>
+          </button>
+          <div class="notification-dropdown hidden" id="notificationDropdown">
+            <div class="notification-dropdown-header">
+              <strong>Notifications</strong>
+              <button type="button" class="text-action" onclick="markAllNotificationsRead()">Mark all read</button>
+            </div>
+            <div id="notificationDropdownList" class="notification-dropdown-list">
+              <div class="feature-state">Log in to see your travel updates.</div>
+            </div>
+            <button type="button" class="notification-view-all" onclick="openNotificationsPage()">View all notifications</button>
+          </div>
+        </div>
         <button class="trip-cart-btn" onclick="toggleCartDrawer()">
           <span>🎒 Trip Cart</span>
           <span class="cart-badge" id="cartCountBadge">0</span>
@@ -82,10 +109,20 @@
   <!-- 2. HERO BANNER -->
   <section class="hero-wrapper">
     <div class="hero-headline">
-      <div class="hero-pill">✨ Handcrafted Holiday Packages & Real-Time Itineraries</div>
+      <div class="hero-pill">✨ Handcrafted Holiday Packages &amp; Real-Time Itineraries</div>
       <h2 class="hero-title">Where would you like to <span>travel next?</span></h2>
       <p class="hero-subtitle">Discover India's top trending beach getaways, majestic snow peaks, royal palaces, and
-        serene backwaters with smart budget estimation.</p>
+        serene backwaters with smart budget estimation &amp; live weather.</p>
+      
+      <div class="hero-stats-strip">
+        <div class="hero-stat-item"><span class="hero-stat-highlight">⭐ 4.9/5</span> Traveller Rating</div>
+        <div class="hero-stat-dot">•</div>
+        <div class="hero-stat-item"><span class="hero-stat-highlight">✈️ 10,000+</span> Trips Planned</div>
+        <div class="hero-stat-dot">•</div>
+        <div class="hero-stat-item"><span class="hero-stat-highlight">🏨 250+</span> Verified Stays</div>
+        <div class="hero-stat-dot">•</div>
+        <div class="hero-stat-item"><span class="hero-stat-highlight">🛡️ 100%</span> Instant UPI Booking</div>
+      </div>
     </div>
   </section>
 
@@ -114,10 +151,68 @@
         <span>🔍 Search Trips</span>
       </button>
     </div>
+
+    <!-- Quick Trending Tags -->
+    <div class="widget-quick-tags">
+      <span class="quick-tags-label">🔥 Trending Now:</span>
+      <button type="button" class="quick-tag-btn" onclick="quickSearchDest('Goa')">🏖️ Goa</button>
+      <button type="button" class="quick-tag-btn" onclick="quickSearchDest('Manali')">🏔️ Manali</button>
+      <button type="button" class="quick-tag-btn" onclick="quickSearchDest('Kerala')">🌿 Kerala</button>
+      <button type="button" class="quick-tag-btn" onclick="quickSearchDest('Jaipur')">🏰 Jaipur</button>
+      <button type="button" class="quick-tag-btn" onclick="quickSearchDest('Ladakh')">❄️ Ladakh</button>
+      <button type="button" class="quick-tag-btn" onclick="quickSearchDest('Andaman')">🤿 Andaman</button>
+      <button type="button" class="quick-tag-btn" onclick="quickSearchDest('Udaipur')">👑 Udaipur</button>
+      <button type="button" class="quick-tag-btn" onclick="quickSearchDest('Rishikesh')">🌊 Rishikesh</button>
+    </div>
   </section>
 
   <!-- 4. MAIN CONTENT AREA -->
   <main class="main-content">
+
+    <!-- Guided Journey Stepper Bar -->
+    <nav class="journey-stepper-bar" aria-label="Trip planning steps">
+      <div class="journey-stepper-track">
+        <button type="button" class="journey-step-btn active" data-step-tab="destinations" onclick="switchNavTab('destinations')">
+          <span class="step-num">1</span>
+          <span class="step-info">
+            <span class="step-label">Step 1</span>
+            <span class="step-title">Destinations</span>
+          </span>
+        </button>
+        <span class="step-divider">→</span>
+        <button type="button" class="journey-step-btn" data-step-tab="hotels" onclick="switchNavTab('hotels')">
+          <span class="step-num">2</span>
+          <span class="step-info">
+            <span class="step-label">Step 2</span>
+            <span class="step-title">Hotels &amp; Stays</span>
+          </span>
+        </button>
+        <span class="step-divider">→</span>
+        <button type="button" class="journey-step-btn" data-step-tab="transport" onclick="switchNavTab('transport')">
+          <span class="step-num">3</span>
+          <span class="step-info">
+            <span class="step-label">Step 3</span>
+            <span class="step-title">Transport</span>
+          </span>
+        </button>
+        <span class="step-divider">→</span>
+        <button type="button" class="journey-step-btn" data-step-tab="mapweather" onclick="switchNavTab('mapweather')">
+          <span class="step-num">4</span>
+          <span class="step-info">
+            <span class="step-label">Step 4</span>
+            <span class="step-title">Map &amp; Weather</span>
+          </span>
+        </button>
+        <span class="step-divider">→</span>
+        <button type="button" class="journey-step-btn" data-step-tab="budget" onclick="switchNavTab('budget')">
+          <span class="step-num">5</span>
+          <span class="step-info">
+            <span class="step-label">Step 5</span>
+            <span class="step-title">Budget &amp; Book</span>
+          </span>
+        </button>
+      </div>
+    </nav>
 
     <!-- MODULE 2: DESTINATIONS & TOURS (Default active view) -->
     <section id="destinations" class="panel active">
@@ -259,11 +354,6 @@
             style="padding: 16px 36px; font-size: 18px; width: 100%; max-width: 440px; font-weight: 800; box-shadow: 0 4px 15px rgba(224, 86, 56, 0.35);"
             onclick="confirmAndPayTrip()">
             💳 Confirm Trip &amp; Proceed to Payment
-          </button>
-          <button class="btn"
-            style="padding: 12px 24px; font-size: 14px; width: 100%; max-width: 440px; background: white; border: 1.5px solid #10b981; color: #10b981; font-weight: 700; cursor: pointer;"
-            onclick="generateTripReceipt()">
-            🧾 Generate Receipt Directly (Demo)
           </button>
         </div>
 
@@ -503,6 +593,121 @@
       </div>
     </section>
 
+    <!-- MODULE: REVIEWS -->
+    <section id="reviews" class="panel">
+      <div class="feature-page">
+        <div class="section-header">
+          <div>
+            <h2>Traveller Reviews</h2>
+            <p>Share a first-hand experience from a completed trip, or explore what other travellers think.</p>
+          </div>
+        </div>
+
+        <div class="review-layout">
+          <section class="feature-card review-write-card">
+            <div class="feature-card-heading">
+              <div>
+                <span class="feature-eyebrow">YOUR EXPERIENCE</span>
+                <h3>Write a review</h3>
+              </div>
+              <span class="feature-heading-icon">✍️</span>
+            </div>
+            <p class="feature-helper">Share your travel feedback to help fellow travellers plan better.</p>
+            <form id="reviewForm" onsubmit="submitReview(event)">
+              <label for="reviewWriteTarget">Destination or Hotel to Review</label>
+              <select id="reviewWriteTarget" required>
+                <option value="">Choose a destination or hotel...</option>
+              </select>
+              <label for="reviewBooking">Link to Your Booking (Optional)</label>
+              <select id="reviewBooking">
+                <option value="">None / General Review</option>
+              </select>
+              <input type="hidden" id="reviewTargetType" value="destination">
+              <input type="hidden" id="reviewTargetName" value="">
+              <label>Your rating</label>
+              <div class="review-star-picker" id="reviewStarPicker" role="radiogroup" aria-label="Rating from 1 to 5">
+                <button type="button" data-rating="1" aria-label="1 star">★</button>
+                <button type="button" data-rating="2" aria-label="2 stars">★</button>
+                <button type="button" data-rating="3" aria-label="3 stars">★</button>
+                <button type="button" data-rating="4" aria-label="4 stars">★</button>
+                <button type="button" data-rating="5" aria-label="5 stars">★</button>
+              </div>
+              <input type="hidden" id="reviewRating" value="">
+              <label for="reviewTitle">Review title</label>
+              <input id="reviewTitle" type="text" minlength="4" maxlength="120" required placeholder="What stood out about your trip?">
+              <label for="reviewDescription">Your review</label>
+              <textarea id="reviewDescription" minlength="20" maxlength="3000" rows="5" required
+                placeholder="Share helpful details about your experience (20–3000 characters)."></textarea>
+              <label for="reviewTripType">Trip type</label>
+              <select id="reviewTripType" required>
+                <option value="">Choose a trip type</option>
+                <option value="Solo">Solo</option>
+                <option value="Friends">Friends</option>
+                <option value="Family">Family</option>
+                <option value="Couple">Couple</option>
+              </select>
+              <div id="reviewFormMessage" class="feature-message" role="status"></div>
+              <button id="reviewSubmitButton" class="btn accent" type="submit">Submit review</button>
+            </form>
+          </section>
+
+          <section class="feature-card review-list-card">
+            <div class="feature-card-heading">
+              <div>
+                <span class="feature-eyebrow">REAL TRAVELLER FEEDBACK</span>
+                <h3>Explore reviews</h3>
+              </div>
+              <span class="feature-heading-icon">🌍</span>
+            </div>
+            <div class="review-controls">
+              <label for="reviewReadTarget">Destination or hotel</label>
+              <select id="reviewReadTarget"></select>
+              <div class="review-control-row">
+                <label for="reviewRatingFilter">Rating</label>
+                <select id="reviewRatingFilter">
+                  <option value="">All ratings</option>
+                  <option value="5">5 stars</option>
+                  <option value="4">4 stars</option>
+                  <option value="3">3 stars</option>
+                  <option value="2">2 stars</option>
+                  <option value="1">1 star</option>
+                </select>
+                <label for="reviewSort">Sort</label>
+                <select id="reviewSort">
+                  <option value="newest">Newest</option>
+                  <option value="highest">Highest rated</option>
+                </select>
+              </div>
+            </div>
+            <div class="review-summary" id="reviewSummary">
+              <span class="feature-state">Select a destination or hotel to view its rating.</span>
+            </div>
+            <div id="reviewListMessage" class="feature-state"></div>
+            <div id="reviewList" class="review-list"></div>
+            <button type="button" class="btn secondary review-load-more hidden" id="reviewLoadMore" onclick="loadMoreReviews()">Load more reviews</button>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODULE: NOTIFICATIONS -->
+    <section id="notifications" class="panel">
+      <div class="feature-page">
+        <div class="section-header">
+          <div>
+            <h2>Your Travel Notifications</h2>
+            <p>Booking updates, trip reminders, itinerary notes, budget alerts, and post-trip review reminders.</p>
+          </div>
+          <button type="button" class="btn secondary small" onclick="markAllNotificationsRead()">Mark all as read</button>
+        </div>
+        <div class="feature-card notification-page-card">
+          <div id="notificationPageMessage" class="feature-state">Loading your notifications...</div>
+          <div id="notificationPageList" class="notification-page-list"></div>
+          <button type="button" class="btn secondary hidden" id="notificationLoadMore" onclick="loadMoreNotifications()">Load more notifications</button>
+        </div>
+      </div>
+    </section>
+
     <!-- MODULE 1: ACCOUNT & PROFILE -->
     <section id="auth" class="panel">
 
@@ -731,6 +936,16 @@
           <textarea id="bookAddress" rows="3" required
             style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; resize:vertical;"></textarea>
         </div>
+        <div class="booking-date-fields">
+          <div>
+            <label for="bookStartDate">Trip start date *</label>
+            <input type="date" id="bookStartDate" required>
+          </div>
+          <div>
+            <label for="bookDurationDays">Trip duration (days) *</label>
+            <input type="number" id="bookDurationDays" min="1" max="60" value="3" required>
+          </div>
+        </div>
 
         <div class="payment-section"
           style="background:#f8fafc; padding:16px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:16px; text-align:center;">
@@ -886,6 +1101,44 @@
   </div>
 
   <script src="js/app.js?v=4"></script>
+  <script>
+    function quickSearchDest(name) {
+      const input = document.getElementById('destSearch');
+      if (input) {
+        input.value = name;
+        if (typeof filterDestinations === 'function') filterDestinations();
+        document.querySelector('[data-tab="destinations"]')?.click();
+      }
+    }
+
+    function switchNavTab(tabName) {
+      const tabBtn = document.querySelector(`.nav-tab-btn[data-tab="${tabName}"]`);
+      if (tabBtn) {
+        tabBtn.click();
+      }
+      updateStepperActive(tabName);
+    }
+
+    function updateStepperActive(tabName) {
+      document.querySelectorAll('.journey-step-btn').forEach(btn => {
+        if (btn.dataset.stepTab === tabName) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+    }
+
+    // Keep stepper in sync with navigation tabs
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tab = btn.dataset.tab;
+          if (tab) updateStepperActive(tab);
+        });
+      });
+    });
+  </script>
 </body>
 
 </html>

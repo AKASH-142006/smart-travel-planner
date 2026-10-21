@@ -1110,9 +1110,13 @@
       if (!confirmAction) return;
 
       try {
+        const adminSession = JSON.parse(localStorage.getItem('stp_admin_session') || 'null');
         const res = await fetch(`${API_BASE}/admin/bookings/${id}/status`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${adminSession?.adminToken || ''}`
+          },
           body: JSON.stringify({ status: newStatus })
         });
         const data = await res.json();

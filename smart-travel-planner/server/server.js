@@ -1,15 +1,65 @@
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { initDB, getPool } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const SESSION_DURATION_DAYS = 30;
 
 app.use(cors());
 app.use(express.json());
+
+function getBearerToken(req) {
+  const authorization = req.get('authorization') || '';
+  const match = authorization.match(/^Bearer\s+([a-f0-9]{64})$/i);
+  return match ? match[1] : null;
+}
+
+async function getAuthenticatedUser(req) {
+  const token = getBearerToken(req);
+  if (!token) return null;
+
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `SELECT u.id, u.name, u.email, u.role
+     FROM user_sessions s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = ? AND s.expires_at > NOW()
+     LIMIT 1`,
+    [tokenHash]
+  );
+  return rows[0] || null;
+}
+
+async function requireAuth(req, res, next) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ error: 'Please log in to continue.' });
+    req.authUser = user;
+    return next();
+  } catch (err) {
+    console.error('Error authenticating request:', err);
+    return res.status(500).json({ error: 'Unable to verify your session.' });
+  }
+}
+
+async function requireAdmin(req, res, next) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ error: 'Please log in to continue.' });
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Administrator access is required.' });
+    req.authUser = user;
+    return next();
+  } catch (err) {
+    console.error('Error authenticating administrator request:', err);
+    return res.status(500).json({ error: 'Unable to verify administrator session.' });
+  }
+}
 
 const fs = require('fs');
 const clientDir = fs.existsSync(path.join(__dirname, '../client'))
@@ -89,7 +139,10 @@ app.post('/api/login', async (req, res) => {
     const pool = getPool();
     const cleanEmail = email.trim().toLowerCase();
 
-    const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [cleanEmail]);
+    const [rows] = await pool.query(
+      'SELECT id, name, email, password_hash, role FROM users WHERE email = ?',
+      [cleanEmail]
+    );
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
@@ -100,9 +153,18 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+    await pool.query(
+      'INSERT INTO user_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+      [tokenHash, user.id, expiresAt]
+    );
+
     return res.json({
       success: true,
       message: 'Logged in successfully!',
+      token,
       user: {
         id: user.id,
         name: user.name,
@@ -146,10 +208,18 @@ app.post('/api/admin/login', async (req, res) => {
       return res.status(401).json({ error: 'Access Denied: Invalid administrator credentials.' });
     }
 
+    const adminToken = crypto.randomBytes(32).toString('hex');
+    const adminTokenHash = crypto.createHash('sha256').update(adminToken).digest('hex');
+    const adminExpiresAt = new Date(Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+    await pool.query(
+      'INSERT INTO user_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+      [adminTokenHash, user.id, adminExpiresAt]
+    );
+
     return res.json({
       success: true,
       message: 'Administrator authenticated successfully!',
-      adminToken: 'stp-admin-secret-token-' + Date.now(),
+      adminToken,
       user: {
         id: user.id,
         name: user.name,
@@ -160,6 +230,425 @@ app.post('/api/admin/login', async (req, res) => {
   } catch (err) {
     console.error('Error in /api/admin/login:', err);
     return res.status(500).json({ error: 'Server error during admin authentication.' });
+  }
+});
+
+async function createNotification({
+  userId,
+  title,
+  message,
+  type,
+  bookingId = null,
+  plannedTripId = null,
+  dedupeKey
+}) {
+  if (!userId || !dedupeKey) return;
+  const pool = getPool();
+  await pool.query(
+    `INSERT IGNORE INTO notifications
+       (user_id, title, message, notification_type, booking_id, planned_trip_id, dedupe_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [userId, title, message, type, bookingId, plannedTripId, dedupeKey]
+  );
+}
+
+function parseDateKey(value) {
+  if (!value) return null;
+  const directDate = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+  if (directDate) return directDate[1];
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+async function runScheduledNotifications() {
+  const pool = getPool();
+  const [upcomingBookings] = await pool.query(
+    `SELECT id, user_id, destination_name, trip_start_date
+     FROM bookings
+     WHERE user_id IS NOT NULL
+       AND status = 'Approved'
+       AND trip_start_date = DATE_ADD(CURDATE(), INTERVAL 1 DAY)`
+  );
+  for (const booking of upcomingBookings) {
+    await createNotification({
+      userId: booking.user_id,
+      title: `Your ${booking.destination_name} trip is tomorrow`,
+      message: `Your approved trip to ${booking.destination_name} starts tomorrow. Check your hotel details, transport arrangements, budget, and itinerary before departure.`,
+      type: 'trip_reminder',
+      bookingId: booking.id,
+      dedupeKey: `trip-reminder:${booking.id}`
+    });
+  }
+
+  const [completedBookings] = await pool.query(
+    `SELECT id, user_id, destination_name
+     FROM bookings
+     WHERE user_id IS NOT NULL
+       AND status = 'Approved'
+       AND trip_start_date IS NOT NULL
+       AND DATE_ADD(trip_start_date, INTERVAL duration_days DAY) <= CURDATE()`
+  );
+  for (const booking of completedBookings) {
+    await createNotification({
+      userId: booking.user_id,
+      title: `How was your trip to ${booking.destination_name}?`,
+      message: 'Share your experience with a quick destination or hotel review.',
+      type: 'post_trip_review',
+      bookingId: booking.id,
+      dedupeKey: `post-trip-review:${booking.id}`
+    });
+  }
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+  const [plans] = await pool.query(
+    `SELECT id, user_id, destination_id, destination_name, start_date, itinerary_data
+     FROM planned_trips
+     WHERE user_id IS NOT NULL
+       AND start_date = DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+       AND itinerary_data IS NOT NULL
+       AND itinerary_data != ''`
+  );
+  const itineraryReminders = new Map();
+  for (const plan of plans) {
+    let itinerary;
+    try {
+      itinerary = JSON.parse(plan.itinerary_data);
+    } catch (err) {
+      console.warn(`[Notifications] Skipping invalid itinerary JSON for planned trip ${plan.id}.`);
+      continue;
+    }
+    if (!Array.isArray(itinerary)) continue;
+
+    const activities = itinerary
+      .filter(day => parseDateKey(day.dateISO || day.date) === tomorrowKey)
+      .flatMap(day => Array.isArray(day.activities) ? day.activities : [])
+      .map(activity => activity.name)
+      .filter(name => typeof name === 'string' && name.trim());
+    if (!activities.length) continue;
+
+    const reminderKey = `${plan.user_id}:${plan.destination_id}:${tomorrowKey}`;
+    const reminder = itineraryReminders.get(reminderKey) || {
+      userId: plan.user_id,
+      destinationName: plan.destination_name,
+      plannedTripId: plan.id,
+      activities: []
+    };
+    reminder.activities.push(...activities);
+    itineraryReminders.set(reminderKey, reminder);
+  }
+
+  for (const [reminderKey, reminder] of itineraryReminders) {
+    await createNotification({
+      userId: reminder.userId,
+      title: `Tomorrow's itinerary in ${reminder.destinationName}`,
+      message: `Your scheduled sightseeing activities: ${[...new Set(reminder.activities)].slice(0, 8).join(', ')}. Review your itinerary and timings before heading out.`,
+      type: 'itinerary_reminder',
+      plannedTripId: reminder.plannedTripId,
+      dedupeKey: `itinerary-reminder:${reminderKey}`
+    });
+  }
+
+  await pool.query('DELETE FROM user_sessions WHERE expires_at <= NOW()');
+}
+
+app.get('/api/reviews/eligible-bookings', requireAuth, async (req, res) => {
+  try {
+    const pool = getPool();
+    const [bookings] = await pool.query(
+      `SELECT id, destination_name, hotel_name, trip_start_date, duration_days
+       FROM bookings
+       WHERE user_id = ?
+       ORDER BY id DESC`,
+      [req.authUser.id]
+    );
+    return res.json({ success: true, bookings });
+  } catch (err) {
+    console.error('Error in GET /api/reviews/eligible-bookings:', err);
+    return res.status(500).json({ error: 'Unable to load trips eligible for review.' });
+  }
+});
+
+app.post('/api/reviews', requireAuth, async (req, res) => {
+  try {
+    const rawBookingId = req.body.bookingId;
+    const bookingId = rawBookingId ? Number(rawBookingId) : null;
+    let targetType = String(req.body.targetType || '').trim().toLowerCase();
+    let targetName = typeof req.body.targetName === 'string' ? req.body.targetName.trim() : '';
+    const rating = Number(req.body.rating);
+    const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
+    const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
+    const tripType = typeof req.body.tripType === 'string' ? req.body.tripType.trim() : 'Solo';
+    const tripTypes = ['Solo', 'Friends', 'Family', 'Couple'];
+
+    if (!['destination', 'hotel'].includes(targetType)) {
+      targetType = 'destination';
+    }
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Choose a rating from 1 to 5 stars.' });
+    }
+    if (title.length < 3 || title.length > 120) {
+      return res.status(400).json({ error: 'Review title must be between 3 and 120 characters.' });
+    }
+    if (description.length < 10 || description.length > 3000) {
+      return res.status(400).json({ error: 'Review description must be between 10 and 3000 characters.' });
+    }
+    if (!tripTypes.includes(tripType)) {
+      return res.status(400).json({ error: 'Choose a valid trip type.' });
+    }
+
+    const pool = getPool();
+    let destinationId = null;
+    let visitDate = req.body.visitDate ? String(req.body.visitDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    let validatedBookingId = null;
+
+    if (bookingId && Number.isInteger(bookingId) && bookingId > 0) {
+      const [bookings] = await pool.query(
+        `SELECT id, destination_id, destination_name, hotel_name, trip_start_date
+         FROM bookings
+         WHERE id = ? AND user_id = ?
+         LIMIT 1`,
+        [bookingId, req.authUser.id]
+      );
+      if (bookings.length > 0) {
+        validatedBookingId = bookings[0].id;
+        destinationId = bookings[0].destination_id;
+        if (!targetName) {
+          targetName = targetType === 'destination' ? bookings[0].destination_name : bookings[0].hotel_name;
+        }
+        if (bookings[0].trip_start_date) {
+          visitDate = bookings[0].trip_start_date;
+        }
+      }
+    }
+
+    if (!targetName) {
+      return res.status(400).json({ error: 'Please choose or enter a destination or hotel to review.' });
+    }
+
+    // Try finding destination_id if not set
+    if (!destinationId && targetType === 'destination') {
+      try {
+        const [dRows] = await pool.query('SELECT id FROM destinations WHERE LOWER(name) = LOWER(?) LIMIT 1', [targetName]);
+        if (dRows.length > 0) destinationId = dRows[0].id;
+      } catch (_) {}
+    }
+
+    try {
+      const [result] = await pool.query(
+        `INSERT INTO reviews
+           (user_id, booking_id, destination_id, target_type, target_name,
+            rating, title, description, trip_type, visit_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          req.authUser.id,
+          validatedBookingId,
+          destinationId,
+          targetType,
+          targetName,
+          rating,
+          title,
+          description,
+          tripType,
+          visitDate
+        ]
+      );
+      return res.status(201).json({ success: true, reviewId: result.insertId });
+    } catch (err) {
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ error: `You have already reviewed this ${targetType}.` });
+      }
+      throw err;
+    }
+  } catch (err) {
+    console.error('Error in POST /api/reviews:', err);
+    return res.status(500).json({ error: 'Unable to submit your review.' });
+  }
+});
+
+app.get('/api/reviews/targets', async (req, res) => {
+  try {
+    const pool = getPool();
+    const [targets] = await pool.query(
+      `SELECT DISTINCT target_type AS targetType, target_name AS targetName
+       FROM (
+         SELECT 'destination' AS target_type, name AS target_name FROM destinations WHERE name IS NOT NULL AND name != ''
+         UNION ALL
+         SELECT 'destination' AS target_type, destination_name AS target_name FROM bookings WHERE destination_name IS NOT NULL AND destination_name != ''
+         UNION ALL
+         SELECT 'hotel' AS target_type, hotel_name AS target_name FROM bookings WHERE hotel_name IS NOT NULL AND hotel_name != ''
+         UNION ALL
+         SELECT target_type, target_name FROM reviews
+       ) AS review_targets
+       ORDER BY targetType, targetName`
+    );
+    const list = targets && targets.length > 0 ? targets : [
+      { targetType: 'destination', targetName: 'Goa' },
+      { targetType: 'destination', targetName: 'Manali' },
+      { targetType: 'destination', targetName: 'Jaipur' },
+      { targetType: 'destination', targetName: 'Kerala Backwaters (Alleppey)' },
+      { targetType: 'hotel', targetName: 'Taj Fort Aguada Resort' },
+      { targetType: 'hotel', targetName: 'The Himalayan Resort & Spa' },
+      { targetType: 'hotel', targetName: 'Rambagh Palace' }
+    ];
+    return res.json({ success: true, targets: list });
+  } catch (err) {
+    console.error('Error in GET /api/reviews/targets:', err);
+    return res.status(500).json({ error: 'Unable to load review destinations and hotels.' });
+  }
+});
+
+app.get('/api/reviews/summary', async (req, res) => {
+  try {
+    const targetType = String(req.query.targetType || '').trim().toLowerCase();
+    const targetName = String(req.query.targetName || '').trim();
+    if (!['destination', 'hotel'].includes(targetType) || !targetName || targetName.length > 150) {
+      return res.status(400).json({ error: 'Choose a valid destination or hotel.' });
+    }
+
+    const pool = getPool();
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS totalReviews, ROUND(AVG(rating), 1) AS averageRating
+       FROM reviews WHERE target_type = ? AND target_name = ?`,
+      [targetType, targetName]
+    );
+    return res.json({
+      success: true,
+      totalReviews: Number(rows[0].totalReviews),
+      averageRating: Number(rows[0].averageRating || 0)
+    });
+  } catch (err) {
+    console.error('Error in GET /api/reviews/summary:', err);
+    return res.status(500).json({ error: 'Unable to load the review summary.' });
+  }
+});
+
+app.get('/api/reviews', async (req, res) => {
+  try {
+    const targetType = String(req.query.targetType || '').trim().toLowerCase();
+    const targetName = String(req.query.targetName || '').trim();
+    const rating = req.query.rating ? Number(req.query.rating) : null;
+    const sort = req.query.sort === 'highest' ? 'highest' : 'newest';
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 8));
+    if (targetType && !['destination', 'hotel'].includes(targetType)) {
+      return res.status(400).json({ error: 'Invalid review target type.' });
+    }
+    if (rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
+      return res.status(400).json({ error: 'Rating filter must be between 1 and 5.' });
+    }
+    if (targetName.length > 150) {
+      return res.status(400).json({ error: 'Review target is too long.' });
+    }
+
+    const filters = [];
+    const values = [];
+    if (targetType) { filters.push('r.target_type = ?'); values.push(targetType); }
+    if (targetName) { filters.push('r.target_name = ?'); values.push(targetName); }
+    if (rating !== null) { filters.push('r.rating = ?'); values.push(rating); }
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const pool = getPool();
+    const orderBy = sort === 'highest' ? 'r.rating DESC, r.created_at DESC' : 'r.created_at DESC';
+    const [reviews] = await pool.query(
+      `SELECT r.id, r.target_type AS targetType, r.target_name AS targetName,
+              r.rating, r.title, r.description, r.trip_type AS tripType,
+              r.visit_date AS visitDate, r.created_at AS createdAt, u.name AS reviewerName
+       FROM reviews r JOIN users u ON u.id = r.user_id
+       ${where}
+       ORDER BY ${orderBy}
+       LIMIT ? OFFSET ?`,
+      [...values, limit, (page - 1) * limit]
+    );
+    return res.json({ success: true, reviews, page, hasMore: reviews.length === limit });
+  } catch (err) {
+    console.error('Error in GET /api/reviews:', err);
+    return res.status(500).json({ error: 'Unable to load reviews.' });
+  }
+});
+
+app.get('/api/notifications/unread-count', requireAuth, async (req, res) => {
+  try {
+    const pool = getPool();
+    const [rows] = await pool.query(
+      'SELECT COUNT(*) AS unreadCount FROM notifications WHERE user_id = ? AND is_read = FALSE',
+      [req.authUser.id]
+    );
+    return res.json({ success: true, unreadCount: Number(rows[0].unreadCount) });
+  } catch (err) {
+    console.error('Error in GET /api/notifications/unread-count:', err);
+    return res.status(500).json({ error: 'Unable to load unread notification count.' });
+  }
+});
+
+app.get('/api/notifications', requireAuth, async (req, res) => {
+  try {
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+    const pool = getPool();
+    const [notifications] = await pool.query(
+      `SELECT id, title, message, notification_type AS type, is_read AS isRead,
+              booking_id AS bookingId, planned_trip_id AS plannedTripId, created_at AS createdAt
+       FROM notifications
+       WHERE user_id = ?
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [req.authUser.id, limit, (page - 1) * limit]
+    );
+    const [countRows] = await pool.query(
+      'SELECT COUNT(*) AS unreadCount FROM notifications WHERE user_id = ? AND is_read = FALSE',
+      [req.authUser.id]
+    );
+    return res.json({
+      success: true,
+      notifications,
+      unreadCount: Number(countRows[0].unreadCount),
+      page,
+      hasMore: notifications.length === limit
+    });
+  } catch (err) {
+    console.error('Error in GET /api/notifications:', err);
+    return res.status(500).json({ error: 'Unable to load notifications.' });
+  }
+});
+
+app.patch('/api/notifications/:id/read', requireAuth, async (req, res) => {
+  try {
+    const notificationId = Number(req.params.id);
+    if (!Number.isInteger(notificationId) || notificationId < 1) {
+      return res.status(400).json({ error: 'Invalid notification ID.' });
+    }
+    const pool = getPool();
+    const [result] = await pool.query(
+      'UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?',
+      [notificationId, req.authUser.id]
+    );
+    if (!result.affectedRows) {
+      return res.status(404).json({ error: 'Notification not found.' });
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Error in PATCH /api/notifications/:id/read:', err);
+    return res.status(500).json({ error: 'Unable to mark notification as read.' });
+  }
+});
+
+app.patch('/api/notifications/read-all', requireAuth, async (req, res) => {
+  try {
+    const pool = getPool();
+    await pool.query(
+      'UPDATE notifications SET is_read = TRUE WHERE user_id = ? AND is_read = FALSE',
+      [req.authUser.id]
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Error in PATCH /api/notifications/read-all:', err);
+    return res.status(500).json({ error: 'Unable to mark notifications as read.' });
   }
 });
 
@@ -265,6 +754,18 @@ app.post('/api/planned-trips', async (req, res) => {
       return res.status(400).json({ error: 'Destination name is required.' });
     }
 
+    let savedPlanUserId = null;
+    if (userId) {
+      const authenticatedUser = await getAuthenticatedUser(req);
+      if (!authenticatedUser) {
+        return res.status(401).json({ error: 'Please log in again before saving a trip plan.' });
+      }
+      if (Number(userId) !== authenticatedUser.id) {
+        return res.status(403).json({ error: 'You can only save plans to your own account.' });
+      }
+      savedPlanUserId = authenticatedUser.id;
+    }
+
     const pool = getPool();
     const finalTitle = title ? title.trim() : `${durationDays || 3}-Day ${destinationName} Plan`;
     const finalInterests = typeof interests === 'object' ? JSON.stringify(interests) : (interests || '');
@@ -280,7 +781,7 @@ app.post('/api/planned-trips', async (req, res) => {
            budget = ?, activity_cost = ?, hotel_name = ?, hotel_price = ?,
            transport_name = ?, transport_price = ?, interests = ?,
            itinerary_data = ?, notes = ?, status = ?
-         WHERE id = ?`,
+         WHERE id = ? AND user_id <=> ?`,
         [
           finalTitle,
           destinationId || 1,
@@ -300,9 +801,28 @@ app.post('/api/planned-trips', async (req, res) => {
           finalItinerary,
           notes || '',
           finalStatus,
-          id
+          id,
+          savedPlanUserId
         ]
       );
+      const [updatedPlan] = await pool.query(
+        'SELECT id FROM planned_trips WHERE id = ? AND user_id <=> ? LIMIT 1',
+        [id, savedPlanUserId]
+      );
+      if (!updatedPlan.length) {
+        return res.status(404).json({ error: 'Trip plan not found.' });
+      }
+      const estimatedCost = Number(activityCost || 0) + Number(hotelPrice || 0) + Number(transportPrice || 0);
+      if (savedPlanUserId && Number(budget) > 0 && estimatedCost > Number(budget)) {
+        await createNotification({
+          userId: savedPlanUserId,
+          title: `Budget alert for ${destinationName.trim()}`,
+          message: `Your estimated trip cost of ₹${estimatedCost.toLocaleString('en-IN')} is above your selected budget of ₹${Number(budget).toLocaleString('en-IN')}.`,
+          type: 'budget_alert',
+          plannedTripId: id,
+          dedupeKey: `budget-alert:plan:${id}`
+        });
+      }
 
       return res.json({
         success: true,
@@ -319,7 +839,7 @@ app.post('/api/planned-trips', async (req, res) => {
             transport_price, interests, itinerary_data, notes, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          userId || null,
+          savedPlanUserId,
           finalTitle,
           destinationId || 1,
           destinationName.trim(),
@@ -340,6 +860,18 @@ app.post('/api/planned-trips', async (req, res) => {
           finalStatus
         ]
       );
+
+      const estimatedCost = Number(activityCost || 0) + Number(hotelPrice || 0) + Number(transportPrice || 0);
+      if (savedPlanUserId && Number(budget) > 0 && estimatedCost > Number(budget)) {
+        await createNotification({
+          userId: savedPlanUserId,
+          title: `Budget alert for ${destinationName.trim()}`,
+          message: `Your estimated trip cost of ₹${estimatedCost.toLocaleString('en-IN')} is above your selected budget of ₹${Number(budget).toLocaleString('en-IN')}.`,
+          type: 'budget_alert',
+          plannedTripId: result.insertId,
+          dedupeKey: `budget-alert:plan:${result.insertId}`
+        });
+      }
 
       return res.status(201).json({
         success: true,
@@ -452,24 +984,56 @@ app.post('/api/bookings', async (req, res) => {
       transportName,
       transportPrice,
       totalPrice,
-      receiptNo
+      receiptNo,
+      tripStartDate,
+      durationDays,
+      itineraryData,
+      budget
     } = req.body;
 
     if (!customerName || !customerEmail || !destinationName) {
       return res.status(400).json({ error: 'Customer name, email, and destination are required.' });
     }
+    const startDate = typeof tripStartDate === 'string' ? tripStartDate.trim() : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(new Date(`${startDate}T00:00:00`).getTime())) {
+      return res.status(400).json({ error: 'Choose a valid trip start date.' });
+    }
+    const tripDays = Number(durationDays);
+    if (!Number.isInteger(tripDays) || tripDays < 1 || tripDays > 60) {
+      return res.status(400).json({ error: 'Trip duration must be between 1 and 60 days.' });
+    }
+
+    let bookingUserId = null;
+    if (userId || getBearerToken(req)) {
+      const authenticatedUser = await getAuthenticatedUser(req);
+      if (!authenticatedUser) {
+        return res.status(401).json({ error: 'Please log in again before booking.' });
+      }
+      if (userId && Number(userId) !== authenticatedUser.id) {
+        return res.status(403).json({ error: 'A booking can only be associated with your own account.' });
+      }
+      bookingUserId = authenticatedUser.id;
+    }
 
     const pool = getPool();
+    const [dateCheck] = await pool.query(
+      'SELECT (? >= CURDATE()) AS valid_start_date',
+      [startDate]
+    );
+    if (!dateCheck[0].valid_start_date) {
+      return res.status(400).json({ error: 'Trip start date must be today or later.' });
+    }
     const finalReceiptNo = receiptNo || ('STP-' + Date.now().toString().slice(-6));
 
     const [result] = await pool.query(
       `INSERT INTO bookings
         (user_id, customer_name, customer_email, customer_phone, customer_address,
          destination_id, destination_name, hotel_name, hotel_price, transport_name,
-         transport_price, total_price, receipt_no, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+         transport_price, total_price, receipt_no, status, trip_start_date,
+         duration_days, itinerary_data, budget)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?)`,
       [
-        userId || null,
+        bookingUserId,
         customerName.trim(),
         customerEmail.trim(),
         customerPhone || '',
@@ -481,7 +1045,11 @@ app.post('/api/bookings', async (req, res) => {
         transportName || '',
         transportPrice || 0,
         totalPrice || 0,
-        finalReceiptNo
+        finalReceiptNo,
+        startDate,
+        tripDays,
+        typeof itineraryData === 'string' ? itineraryData : JSON.stringify(itineraryData || []),
+        Math.max(0, Number(budget) || 0)
       ]
     );
 
@@ -497,6 +1065,18 @@ app.post('/api/bookings', async (req, res) => {
       receipt_no: finalReceiptNo,
       status: 'Pending'
     };
+
+    const selectedBudget = Number(budget) || 0;
+    if (bookingUserId && selectedBudget > 0 && Number(totalPrice || 0) > selectedBudget) {
+      await createNotification({
+        userId: bookingUserId,
+        title: `Budget alert for ${destinationName.trim()}`,
+        message: `Your booking estimate of ₹${Number(totalPrice).toLocaleString('en-IN')} is above your selected budget of ₹${selectedBudget.toLocaleString('en-IN')}.`,
+        type: 'budget_alert',
+        bookingId: result.insertId,
+        dedupeKey: `budget-alert:booking:${result.insertId}`
+      });
+    }
 
     // Send email notification to customer that trip is planned & under review
     try {
@@ -531,7 +1111,7 @@ app.get('/api/admin/bookings', async (req, res) => {
 });
 
 // 3. Admin updates booking status (Approve / Reject)
-app.patch('/api/admin/bookings/:id/status', async (req, res) => {
+app.patch('/api/admin/bookings/:id/status', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body; // 'Approved', 'Rejected', 'Pending'
@@ -548,6 +1128,11 @@ app.patch('/api/admin/bookings/:id/status', async (req, res) => {
 
     const booking = rows[0];
 
+    await pool.query(
+      'UPDATE bookings SET status = ? WHERE id = ?',
+      [status, id]
+    );
+
     let emailSent = booking.email_sent;
     if (status === 'Approved') {
       try {
@@ -558,12 +1143,25 @@ app.patch('/api/admin/bookings/:id/status', async (req, res) => {
       }
     }
 
-    await pool.query(
-      `UPDATE bookings
-       SET status = ?, email_sent = ?, email_sent_at = IF(? = 1, NOW(), email_sent_at)
-       WHERE id = ?`,
-      [status, emailSent, emailSent ? 1 : 0, id]
-    );
+    if (status === 'Approved') {
+      await pool.query(
+        `UPDATE bookings
+         SET email_sent = ?, email_sent_at = IF(? = 1, NOW(), email_sent_at)
+         WHERE id = ?`,
+        [emailSent, emailSent ? 1 : 0, id]
+      );
+    }
+
+    if (status === 'Approved' && booking.user_id) {
+      await createNotification({
+        userId: booking.user_id,
+        title: `Your ${booking.destination_name} booking is confirmed`,
+        message: `Your trip to ${booking.destination_name} has been approved. Review your hotel, transport, and trip details before departure.`,
+        type: 'booking_confirmation',
+        bookingId: booking.id,
+        dedupeKey: `booking-confirmation:${booking.id}`
+      });
+    }
 
     return res.json({
       success: true,
@@ -792,9 +1390,27 @@ app.get('/api/admin/stats', async (req, res) => {
   }
 });
 
+let reminderJobRunning = false;
+function startNotificationScheduler() {
+  const run = async () => {
+    if (reminderJobRunning) return;
+    reminderJobRunning = true;
+    try {
+      await runScheduledNotifications();
+    } catch (err) {
+      console.error('[Notifications] Scheduled notification run failed:', err);
+    } finally {
+      reminderJobRunning = false;
+    }
+  };
+  void run();
+  setInterval(run, 15 * 60 * 1000);
+}
+
 // Start server after initializing DB
 initDB()
   .then(() => {
+    startNotificationScheduler();
     app.listen(PORT, () => {
       console.log(`[Server] Running on http://localhost:${PORT}`);
     });
