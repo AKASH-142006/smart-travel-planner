@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Receipt - Smart Travel Planner</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=8">
+  <style>
+    body {
+      background: #f1f5f9;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      margin: 0;
+      padding: 30px 16px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .receipt-page-wrapper {
+      width: 100%;
+      max-width: 620px;
+    }
+
+    .receipt-top-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .btn-nav-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #ffffff;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      padding: 9px 16px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 700;
+      text-decoration: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      transition: all 0.2s;
+    }
+
+    .btn-nav-back:hover {
+      background: #f8fafc;
+      transform: translateY(-1px);
+    }
+
+    .trip-receipt {
+      background: #ffffff;
+      border-radius: 18px;
+      padding: 36px 32px;
+      box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+      border: 1px solid #e2e8f0;
+      position: relative;
+    }
+
+    .receipt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px dashed #e2e8f0;
+      padding-bottom: 20px;
+      margin-bottom: 22px;
+    }
+
+    .receipt-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .receipt-brand-name {
+      font-size: 20px;
+      font-weight: 900;
+      color: #070f26;
+      line-height: 1.2;
+    }
+
+    .receipt-brand-sub {
+      font-size: 12.5px;
+      color: #64748b;
+      font-weight: 600;
+    }
+
+    .receipt-no-block {
+      text-align: right;
+    }
+
+    .receipt-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+
+    .receipt-no {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0284c7;
+    }
+
+    .receipt-date {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    .receipt-status-badge {
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+      text-align: center;
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      margin-bottom: 24px;
+    }
+
+    .receipt-section {
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 14px;
+      margin-bottom: 14px;
+    }
+
+    .receipt-section-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 10px;
+    }
+
+    .receipt-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      color: #475569;
+      padding: 4px 0;
+    }
+
+    .receipt-row strong {
+      color: #0f172a;
+    }
+
+    .receipt-total-row {
+      border-top: 2px solid #070f26;
+      padding-top: 14px;
+      margin-top: 10px;
+      font-size: 19px;
+      font-weight: 900;
+      color: #070f26;
+    }
+
+    .receipt-footer {
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    .receipt-upi {
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #334155;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .receipt-thankyou {
+      font-weight: 800;
+      color: #0f172a;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .receipt-note {
+      font-size: 11.5px;
+      color: #94a3b8;
+      margin-bottom: 18px;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .receipt-top-nav,
+      .no-print {
+        display: none !important;
+      }
+      .trip-receipt {
+        box-shadow: none;
+        border: 1px solid #cbd5e1;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="receipt-page-wrapper">
+    <div class="receipt-top-nav no-print">
+      <a href="index.html" class="btn-nav-back">← Back to Travel Planner</a>
+      <button type="button" class="btn accent" style="padding: 9px 18px; font-weight:700;" onclick="window.print()">
+        🖨️ Print Receipt
+      </button>
+    </div>
+
+    <div class="trip-receipt" id="tripReceiptCard">
+      <div class="receipt-header">
+        <div class="receipt-brand">
+          <span style="font-size:32px;">🧭</span>
+          <div>
+            <div class="receipt-brand-name">Smart Travel Planner</div>
+            <div class="receipt-brand-sub">Official Trip Booking Receipt</div>
+          </div>
+        </div>
+        <div class="receipt-no-block">
+          <div class="receipt-label">Receipt No.</div>
+          <div class="receipt-no" id="recNo">STP-20261022-3076</div>
+          <div class="receipt-date" id="recDate">October 22, 2026</div>
+        </div>
+      </div>
+
+      <div class="receipt-status-badge">✅ PAYMENT CONFIRMED &amp; APPROVED</div>
+
+      <div class="receipt-section">
+        <div class="receipt-section-title">📍 Trip Destination</div>
+        <div class="receipt-row">
+          <span>Destination</span>
+          <span><strong id="recDest">Ladakh</strong></span>
+        </div>
+        <div class="receipt-row">
+          <span>Traveller Name</span>
+          <span><strong id="recCustomer">Akash</strong></span>
+        </div>
+        <div class="receipt-row">
+          <span>Trip Start Date</span>
+          <span id="recStartDate">2026-10-29</span>
+        </div>
+        <div class="receipt-row">
+          <span>Booking ID</span>
+          <span id="recBookingId">#101</span>
+        </div>
+      </div>
+
+      <div class="receipt-section">
+        <div class="receipt-section-title">🏨 Hotel &amp; Stay</div>
+        <div class="receipt-row">
+          <span>Hotel Name</span>
+          <span><strong id="recHotel">The Grand Dragon Ladakh</strong></span>
+        </div>
+        <div class="receipt-row">
+          <span>Hotel Charges</span>
+          <span id="recHotelPrice">₹6,500</span>
+        </div>
+      </div>
+
+      <div class="receipt-section">
+        <div class="receipt-section-title">🚗 Transport</div>
+        <div class="receipt-row">
+          <span>Transport Mode</span>
+          <span><strong id="recTransport">Private SUV / Tempo Traveller</strong></span>
+        </div>
+        <div class="receipt-row">
+          <span>Transport Charges</span>
+          <span id="recTransportPrice">₹3,200</span>
+        </div>
+      </div>
+
+      <div class="receipt-section">
+        <div class="receipt-section-title">💰 Cost Breakdown</div>
+        <div class="receipt-row">
+          <span>🏨 Hotel &amp; Accommodation</span>
+          <span id="recCostHotel">₹6,500</span>
+        </div>
+        <div class="receipt-row">
+          <span>🚗 Transit &amp; Transport</span>
+          <span id="recCostTransport">₹3,200</span>
+        </div>
+        <div class="receipt-row">
+          <span>🎟️ Activities &amp; Itinerary Sightseeing</span>
+          <span id="recCostActivities">₹8,800</span>
+        </div>
+        <div class="receipt-row receipt-total-row">
+          <span>TOTAL PAID</span>
+          <span id="recTotal">₹18,500</span>
+        </div>
+      </div>
+
+      <div class="receipt-footer">
+        <div class="receipt-upi">
+          <span>💳 Verified UPI Payment</span>
+          <span>akashakas723@okaxis</span>
+        </div>
+        <div class="receipt-thankyou">Thank you for booking with Smart Travel Planner! 🌟</div>
+        <div class="receipt-note">This is a verified computer-generated booking invoice. For queries contact support@smarttravelplanner.in</div>
+        <button class="btn accent no-print" style="width:100%; padding:14px; font-weight:800; font-size:15px;" onclick="window.print()">
+          🖨️ Print or Save as PDF
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Parse query params or sessionStorage to render receipt dynamically
+    (async function initReceipt() {
+      const params = new URLSearchParams(window.location.search);
+      const bookingId = params.get('bookingId');
+      let booking = null;
+
+      // 1. Try reading from sessionStorage
+      try {
+        const stored = sessionStorage.getItem('stp_view_receipt');
+        if (stored) booking = JSON.parse(stored);
+      } catch (_) {}
+
+      // 2. If booking ID is provided, try fetching from backend API
+      if (bookingId && !booking) {
+        try {
+          const authUser = JSON.parse(localStorage.getItem('stp_session') || '{}');
+          const token = authUser.apiToken || '';
+          const res = await fetch('/api/bookings/' + bookingId, {
+            headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+          });
+          const data = await res.json();
+          if (data && data.booking) booking = data.booking;
+        } catch (_) {}
+      }
+
+      if (booking) {
+        const total = Number(booking.total_price || booking.total || 18500);
+        const hotelPrice = Number(booking.hotel_price || 0);
+        const transportPrice = Number(booking.transport_price || 0);
+        const activitiesPrice = Math.max(0, total - (hotelPrice + transportPrice));
+
+        if (document.getElementById('recNo')) document.getElementById('recNo').textContent = booking.receipt_no || ('STP-CONF-' + (booking.id || 101));
+        if (document.getElementById('recDest')) document.getElementById('recDest').textContent = booking.destination_name || 'Holiday Trip';
+        if (document.getElementById('recCustomer')) document.getElementById('recCustomer').textContent = booking.customer_name || 'Valued Traveller';
+        if (document.getElementById('recStartDate')) document.getElementById('recStartDate').textContent = String(booking.trip_start_date || 'Upcoming').slice(0, 10);
+        if (document.getElementById('recBookingId')) document.getElementById('recBookingId').textContent = '#' + (booking.id || 101);
+
+        if (document.getElementById('recHotel')) document.getElementById('recHotel').textContent = booking.hotel_name || 'Standard Hotel Stay';
+        if (document.getElementById('recHotelPrice')) document.getElementById('recHotelPrice').textContent = '₹' + hotelPrice.toLocaleString('en-IN');
+
+        if (document.getElementById('recTransport')) document.getElementById('recTransport').textContent = booking.transport_name || 'Transit & Flight Included';
+        if (document.getElementById('recTransportPrice')) document.getElementById('recTransportPrice').textContent = '₹' + transportPrice.toLocaleString('en-IN');
+
+        if (document.getElementById('recCostHotel')) document.getElementById('recCostHotel').textContent = '₹' + hotelPrice.toLocaleString('en-IN');
+        if (document.getElementById('recCostTransport')) document.getElementById('recCostTransport').textContent = '₹' + transportPrice.toLocaleString('en-IN');
+        if (document.getElementById('recCostActivities')) document.getElementById('recCostActivities').textContent = '₹' + activitiesPrice.toLocaleString('en-IN');
+        if (document.getElementById('recTotal')) document.getElementById('recTotal').textContent = '₹' + total.toLocaleString('en-IN');
+
+        const now = new Date();
+        if (document.getElementById('recDate')) {
+          document.getElementById('recDate').textContent = now.toLocaleDateString('en-IN', {
+            day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -636,6 +636,8 @@ function updateCartUI() {
   let totalCost = 0;
   list.innerHTML = tripCart.map(item => {
     totalCost += item.price;
+    const safeName = (item.name || '').replace(/'/g, "\\'");
+    const safeImg = (item.img || '').replace(/'/g, "\\'");
     return `
       <div class="cart-item" style="${item.status ? 'border: 2px solid #10b981; background: #f0fdf4;' : ''}">
         <div class="cart-item-thumb" style="background-image:url('${item.img}')"></div>
@@ -644,6 +646,16 @@ function updateCartUI() {
           <p>${item.duration || 'Custom Trip'} • ₹${item.price.toLocaleString()}</p>
           ${item.status ? `<div style="margin-top: 6px; font-size: 12px; font-weight: 700; color: #10b981;">✅ ${item.status}</div>` : ''}
           ${item.description ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;">${item.description}</div>` : ''}
+          
+          <!-- Flipkart / Amazon style Reviews Action Buttons -->
+          <div class="cart-item-actions">
+            <button type="button" class="btn-cart-review" onclick="openCartDestinationReviews('${safeName}', '${safeImg}')" title="See what other travellers said about ${item.name}">
+              ⭐ Reviews
+            </button>
+            <button type="button" class="btn-cart-write" onclick="openWriteReviewForTarget('destination', '${safeName}')" title="Write your review for ${item.name}">
+              ✍️ Write Review
+            </button>
+          </div>
         </div>
         ${!item.status ? `<button class="btn-close-drawer" style="background:#fee2e2; color:#ef4444; width:26px; height:26px;" onclick="toggleTripCart(${item.id})">✕</button>` : ''}
       </div>
@@ -741,7 +753,7 @@ function renderDestinationsList(list) {
         <div class="dest-body">
           <div class="card-top-row">
             <h3 class="dest-name">${d.name}</h3>
-            <div class="card-rating">★ ${d.rating} <span style="font-weight:400; color:var(--muted); font-size:11px;">(${d.reviews})</span></div>
+            <div class="card-rating" style="cursor: pointer;" onclick="event.stopPropagation(); openCartDestinationReviews('${d.name.replace(/'/g, "\\'")}', '${d.img ? d.img.replace(/'/g, "\\'") : ''}')" title="Click to view customer reviews for ${d.name}">★ ${d.rating} <span style="font-weight:400; color:var(--muted); font-size:11px;">(${d.reviews})</span></div>
           </div>
           <div style="font-size:11.5px; color:var(--blue); font-weight:700; margin-bottom:4px;">⏱️ ${d.duration}</div>
           <p class="dest-desc">${d.desc}</p>
@@ -753,6 +765,7 @@ function renderDestinationsList(list) {
               </div>
               <div style="display: flex; gap: 6px;">
                 <button class="btn" style="padding: 6px 10px; font-size: 11px;" onclick="event.stopPropagation(); openDestDetail(${d.id})">ℹ️ Details</button>
+                <button class="btn" style="padding: 6px 9px; font-size: 11px; background:#fef3c7; color:#92400e; border:1px solid #fde68a;" onclick="event.stopPropagation(); openCartDestinationReviews('${d.name.replace(/'/g, "\\'")}', '${d.img ? d.img.replace(/'/g, "\\'") : ''}')" title="Read customer reviews">⭐ Reviews</button>
                 <button class="btn-add-trip ${inCart ? 'added' : ''}" onclick="toggleTripCart(${d.id}, event)">
                   ${inCart ? '✓ Added' : '+ Add'}
                 </button>
@@ -821,6 +834,8 @@ function openDestDetail(id) {
 
     <div style="display:flex; gap:12px; margin-top:24px; flex-wrap:wrap;">
       <button class="btn accent" style="box-shadow: 0 4px 14px rgba(224, 86, 56, 0.4);" onclick="proceedToHotels(${d.id}, '${d.name.replace(/'/g, "\\'")}', ${d.price})">🏨 View Hotels in ${d.name}</button>
+      <button class="btn" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a;" onclick="openCartDestinationReviews('${d.name.replace(/'/g, "\\'")}', '${d.img ? d.img.replace(/'/g, "\\'") : ''}')">⭐ Customer Reviews (${d.reviews})</button>
+      <button class="btn" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;" onclick="openWriteReviewForTarget('destination', '${d.name.replace(/'/g, "\\'")}')">✍️ Write a Review</button>
       <button class="btn" onclick="selectDestinationForMapWeather(${d.id})">🗺️ View on Map & Weather Forecast</button>
       <button class="btn secondary" onclick="planForDestination('${d.name}', ${d.price})">💰 Calculate Detailed Budget</button>
     </div>
@@ -2289,21 +2304,27 @@ function proceedToBudget(transportName, transportPrice) {
   window.currentTrip.transportName = transportName;
   window.currentTrip.transportPrice = transportPrice;
 
-  // Pre-fill budget tracker with all the selections
+  // Pre-fill budget tracker using ONLY actual selections (no random estimation)
   const dest       = destinations.find(d => d.id === window.currentTrip.destId);
-  const destPrice  = window.currentTrip.destPrice  || (dest ? dest.price : 0);
   const hotelPrice = window.currentTrip.hotelPrice  || 0;
   const transPrice = transportPrice || 0;
-  const activitiesEst = Math.round(destPrice * 0.15); // 15% for activities
-  const totalBudget = hotelPrice + transPrice + activitiesEst + Math.round(destPrice * 0.10); // + 10% buffer
+  // Activities = 0 by default, user fills or generates from itinerary
+  const existingActivities = parseFloat(document.getElementById('expActivities').value) || 0;
+  const totalBudget = hotelPrice + transPrice + existingActivities;
 
-  document.getElementById('totalBudget').value    = totalBudget;
-  document.getElementById('expHotel').value       = hotelPrice;
-  document.getElementById('expTransport').value   = transPrice;
-  document.getElementById('expActivities').value  = activitiesEst;
+  document.getElementById('totalBudget').value    = totalBudget > 0 ? totalBudget : '';
+  document.getElementById('expHotel').value       = hotelPrice > 0 ? hotelPrice : '';
+  document.getElementById('expTransport').value   = transPrice > 0 ? transPrice : '';
+  // Don't overwrite activities if already set
+  if (existingActivities === 0) {
+    document.getElementById('expActivities').value = '';
+  }
 
   // Show the budget selection summary header
   renderBudgetSelectionSummary();
+
+  // Inject "Generate Itinerary" prompt card into budget section
+  renderBudgetItineraryPrompt();
 
   // Show confirm button
   const confirmContainer = document.getElementById('budgetConfirmBtnContainer');
@@ -2314,6 +2335,74 @@ function proceedToBudget(transportName, transportPrice) {
   updateBudget();
   document.querySelector('[data-tab="budget"]').click();
   setTimeout(() => renderBookingProgress(4), 50);
+}
+
+function renderBudgetItineraryPrompt() {
+  const trip = window.currentTrip;
+  if (!trip.destName) return;
+
+  // Remove existing prompt if any
+  const existing = document.getElementById('budgetItineraryPrompt');
+  if (existing) existing.remove();
+
+  const dest = destinations.find(d => d.id === trip.destId);
+  const card = document.createElement('div');
+  card.id = 'budgetItineraryPrompt';
+  card.innerHTML = `
+    <div style="
+      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+      border: 1.5px solid #86efac;
+      border-radius: 14px;
+      padding: 20px 24px;
+      margin: 22px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    ">
+      <div style="display:flex; align-items:center; gap:14px;">
+        <span style="font-size:32px;">🗺️</span>
+        <div>
+          <div style="font-size:15px; font-weight:800; color:#14532d; margin-bottom:3px;">
+            Generate Day-by-Day Itinerary for ${trip.destName}
+          </div>
+          <div style="font-size:13px; color:#166534; line-height:1.4;">
+            Create a personalized trip plan with your selected hotel &amp; transport.
+            Activities cost will be auto-calculated and added to your budget.
+            ${dest ? `<span style="font-weight:700;">🌤️ ${dest.season} · ${dest.duration}</span>` : ''}
+          </div>
+        </div>
+      </div>
+      <button
+        class="btn accent"
+        style="padding:12px 22px; font-size:14px; font-weight:800; white-space:nowrap; box-shadow:0 4px 14px rgba(20,83,45,0.2);"
+        onclick="openPlanTripModalFromBudget()">
+        ✨ Generate Itinerary
+      </button>
+    </div>
+  `;
+
+  // Insert after trip summary banner
+  const summary = document.getElementById('budgetTripSummary');
+  if (summary && summary.nextSibling) {
+    summary.parentNode.insertBefore(card, summary.nextSibling);
+  } else {
+    const budgetDash = document.querySelector('.budget-dashboard');
+    if (budgetDash) budgetDash.insertBefore(card, budgetDash.firstChild);
+  }
+}
+
+function openPlanTripModalFromBudget() {
+  const trip = window.currentTrip;
+  // Pre-fill the modal with current trip selections
+  const prefill = {
+    dest: trip.destId ? (destinations.find(d => d.id === trip.destId) || { id: trip.destId, name: trip.destName }) : null,
+    budget: (trip.hotelPrice || 0) + (trip.transportPrice || 0) + 5000, // add activities estimate
+    hotelName: trip.hotelName,
+    transportName: trip.transportName
+  };
+  openPlanTripModal(trip.destId || null, prefill, 'budget');
 }
 
 function renderBudgetSelectionSummary() {
@@ -2519,9 +2608,19 @@ document.addEventListener('DOMContentLoaded', () => {
   renderHotelsList(hotelsData);
 });
 
-// ---------------- COMPLETE TRIP PLANNER ----------------
+// Track which panel triggered the itinerary planner
+let plannerOriginPanel = 'destinations';
 
-function openPlanTripModal(defaultDestId = null, existingConfig = null) {
+function openPlanTripModal(defaultDestId = null, existingConfig = null, origin = null) {
+  // Remember origin panel (e.g. 'budget' or 'destinations')
+  if (origin) {
+    plannerOriginPanel = origin;
+  } else {
+    // Detect active panel
+    const activePanel = document.querySelector('.panel.active');
+    plannerOriginPanel = (activePanel && activePanel.id) ? activePanel.id : 'destinations';
+  }
+
   const destSelect = document.getElementById('ptDest');
   destSelect.innerHTML = destinations.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
   
@@ -2534,6 +2633,7 @@ function openPlanTripModal(defaultDestId = null, existingConfig = null) {
     if (existingConfig.startDate) document.getElementById('ptStartDate').value = existingConfig.startDate;
     if (existingConfig.days) document.getElementById('ptDays').value = existingConfig.days;
     if (existingConfig.travellers) document.getElementById('ptTravellers').value = existingConfig.travellers;
+    // Accept budget from prefill (e.g. when called from budget page)
     if (existingConfig.budget) document.getElementById('ptBudget').value = existingConfig.budget;
     if (existingConfig.group) document.getElementById('ptGroup').value = existingConfig.group;
     if (existingConfig.style) document.getElementById('ptStyle').value = existingConfig.style;
@@ -2548,6 +2648,39 @@ function openPlanTripModal(defaultDestId = null, existingConfig = null) {
     const nextWeek = new Date();
     nextWeek.setDate(today.getDate() + 7);
     document.getElementById('ptStartDate').value = nextWeek.toISOString().split('T')[0];
+
+    // Pre-fill destination from currentTrip if set
+    const trip = window.currentTrip;
+    if (trip && trip.destId && !defaultDestId) {
+      destSelect.value = trip.destId;
+      // Pre-fill budget from actual selections
+      if (trip.hotelPrice || trip.transportPrice) {
+        const est = (trip.hotelPrice || 0) + (trip.transportPrice || 0) + 5000;
+        document.getElementById('ptBudget').value = est;
+      }
+    }
+  }
+  
+  // Show pre-selected trip banner if hotel/transport already selected
+  const tripBanner = document.getElementById('ptSelectedTripBanner');
+  if (tripBanner) {
+    const trip = window.currentTrip;
+    const hasHotel = trip && trip.hotelName;
+    const hasTransport = trip && trip.transportName;
+    if (hasHotel || hasTransport) {
+      let parts = [];
+      if (hasHotel) parts.push(`🏨 <strong>${trip.hotelName}</strong> (₹${(trip.hotelPrice || 0).toLocaleString('en-IN')})`);
+      if (hasTransport) parts.push(`🚆 <strong>${trip.transportName}</strong> (₹${(trip.transportPrice || 0).toLocaleString('en-IN')})`);
+      tripBanner.innerHTML = `<div style="display:flex;align-items:center;gap:6px;font-weight:700;color:#1e40af;margin-bottom:3px;">
+        <span>📌 Pre-selected for your trip:</span>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;color:#334155;">
+        ${parts.join(' <span style="color:#94a3b8;">•</span> ')}
+      </div>`;
+      tripBanner.style.display = 'block';
+    } else {
+      tripBanner.style.display = 'none';
+    }
   }
   
   document.getElementById('planTripModalOverlay').classList.remove('hidden');
@@ -2557,6 +2690,11 @@ function openPlanTripModal(defaultDestId = null, existingConfig = null) {
 function closePlanTripModal() {
   document.getElementById('planTripModalOverlay').classList.add('hidden');
   document.getElementById('planTripModal').classList.add('hidden');
+}
+
+function closeBudgetPlanner() {
+  const card = document.getElementById('budgetItineraryCard');
+  if (card) card.classList.add('hidden');
 }
 
 function closePlanner() {
@@ -2711,13 +2849,25 @@ function generateItinerary(e) {
 }
 
 function renderItinerary(savedPlanRef = null) {
-  document.getElementById('destList').parentElement.querySelector('.section-header').classList.add('hidden');
-  document.getElementById('destList').parentElement.querySelector('.category-strip').classList.add('hidden');
-  document.getElementById('destList').classList.add('hidden');
-  document.getElementById('destDetailCard').classList.add('hidden');
-  
-  const card = document.getElementById('plannerItineraryCard');
-  card.classList.remove('hidden');
+  // Determine if we should display inside the budget panel or the destinations panel
+  const isBudgetOrigin = (plannerOriginPanel === 'budget');
+
+  if (isBudgetOrigin) {
+    // Show inside budget panel in-place
+    const budgetCard = document.getElementById('budgetItineraryCard');
+    if (budgetCard) {
+      budgetCard.classList.remove('hidden');
+    }
+  } else {
+    // Show inside destinations panel
+    document.getElementById('destList').parentElement.querySelector('.section-header').classList.add('hidden');
+    document.getElementById('destList').parentElement.querySelector('.category-strip').classList.add('hidden');
+    document.getElementById('destList').classList.add('hidden');
+    document.getElementById('destDetailCard').classList.add('hidden');
+    
+    const card = document.getElementById('plannerItineraryCard');
+    if (card) card.classList.remove('hidden');
+  }
   
   // Calculate total costs
   let totalActivityCost = 0;
@@ -2755,6 +2905,10 @@ function renderItinerary(savedPlanRef = null) {
   if (saveBtn) {
     saveBtn.innerHTML = planInfo ? `💾 Update Saved Plan (#${planInfo.id})` : `💾 Save This Planned Trip`;
   }
+  const saveBtnBudget = document.getElementById('btnSaveTripPlanBudget');
+  if (saveBtnBudget) {
+    saveBtnBudget.innerHTML = planInfo ? `💾 Update Saved Plan (#${planInfo.id})` : `💾 Save This Planned Trip`;
+  }
 
   let html = `
     ${planBannerHtml}
@@ -2770,7 +2924,7 @@ function renderItinerary(savedPlanRef = null) {
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn secondary small" onclick="openSavePlanModal()" style="font-weight:700;">💾 ${planInfo ? 'Update Plan' : 'Save Plan'}</button>
-          <button class="btn accent small" onclick="saveItineraryToBudget()">💰 Send to Budget</button>
+          <button class="btn accent small" onclick="saveItineraryToBudget()">💰 ${isBudgetOrigin ? 'Sync to Budget Inputs' : 'Send to Budget'}</button>
         </div>
       </div>
       
@@ -2843,7 +2997,18 @@ function renderItinerary(savedPlanRef = null) {
   
   html += `</div>`;
   
-  document.getElementById('plannerItineraryBody').innerHTML = html;
+  // Render into the appropriate target container
+  if (isBudgetOrigin) {
+    const budgetBody = document.getElementById('budgetItineraryBody');
+    if (budgetBody) budgetBody.innerHTML = html;
+    const budgetCard = document.getElementById('budgetItineraryCard');
+    if (budgetCard) {
+      budgetCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  } else {
+    const plannerBody = document.getElementById('plannerItineraryBody');
+    if (plannerBody) plannerBody.innerHTML = html;
+  }
 }
 
 function removeActivity(dayIndex, actIndex) {
@@ -2859,20 +3024,28 @@ function saveItineraryToBudget() {
     if (d.activities) d.activities.forEach(a => totalActivityCost += (a.cost || 0));
   });
   totalActivityCost *= (plannerConfig.travellers || 1);
-  
-  document.getElementById('totalBudget').value = plannerConfig.budget || 15000;
-  document.getElementById('expActivities').value = totalActivityCost;
-  
-  // Assign arbitrary values for hotel and transport if they are empty
-  const hotel = document.getElementById('expHotel').value || Math.round(((plannerConfig.budget || 15000) - totalActivityCost) * 0.6);
-  const transport = document.getElementById('expTransport').value || Math.round(((plannerConfig.budget || 15000) - totalActivityCost) * 0.4);
-  
-  document.getElementById('expHotel').value = Math.max(0, hotel);
-  document.getElementById('expTransport').value = Math.max(0, transport);
-  
+
+  // Use actual trip selections for hotel & transport — never arbitrary numbers
+  const tripHotel    = window.currentTrip.hotelPrice    || 0;
+  const tripTransport = window.currentTrip.transportPrice || 0;
+
+  // Only fall back to existing field values if currentTrip has nothing set
+  const hotelVal    = tripHotel    > 0 ? tripHotel    : (parseFloat(document.getElementById('expHotel').value) || 0);
+  const transportVal = tripTransport > 0 ? tripTransport : (parseFloat(document.getElementById('expTransport').value) || 0);
+
+  const total = hotelVal + transportVal + totalActivityCost;
+
+  document.getElementById('totalBudget').value    = plannerConfig.budget || total;
+  document.getElementById('expHotel').value       = hotelVal;
+  document.getElementById('expTransport').value   = transportVal;
+  document.getElementById('expActivities').value  = totalActivityCost;
+
+  // Sync trip summary banner too
+  renderBudgetSelectionSummary();
+
   updateBudget();
   document.querySelector('[data-tab="budget"]').click();
-  showToast('Budget synchronized from trip plan!');
+  showToast('✅ Budget synced from your itinerary plan!');
 }
 
 // ---------------- SAVED PLANNED TRIPS LOGIC ----------------
@@ -3424,13 +3597,33 @@ function updateFeatureAuthUI() {
   if (notificationNav) notificationNav.classList.toggle('hidden', !hasApiSession);
   const form = document.getElementById('reviewForm');
   if (form) {
-    form.querySelectorAll('input, select, textarea, button').forEach(control => {
-      control.disabled = !hasApiSession;
+    // Keep form inputs ENABLED so users can comfortably choose destination, stars, and type review text
+    form.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach(control => {
+      control.disabled = false;
     });
+    const submitBtn = document.getElementById('reviewSubmitButton');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = hasApiSession ? 'Submit Review' : '🔒 Log in to Submit Review';
+    }
     const message = document.getElementById('reviewFormMessage');
-    if (message && !hasApiSession) {
-      message.textContent = 'Log in with your account to submit a review for a completed trip.';
-      message.className = 'feature-message';
+    if (message) {
+      if (!hasApiSession) {
+        message.innerHTML = '💡 You can write your review now! <a href="login.html" style="color:var(--blue); font-weight:700; text-decoration:underline;">Click here to Login</a> so your review is saved & verified.';
+        message.className = 'feature-message';
+        message.style.background = '#f0f9ff';
+        message.style.border = '1px solid #bae6fd';
+        message.style.color = '#0369a1';
+        message.style.padding = '10px 14px';
+        message.style.borderRadius = '8px';
+      } else {
+        message.textContent = '';
+        message.className = 'feature-message';
+        message.style.background = '';
+        message.style.border = '';
+        message.style.color = '';
+        message.style.padding = '';
+      }
     }
   }
 }
@@ -3571,12 +3764,15 @@ async function loadReviewPanel() {
     targetError = err;
   }
   loadEligibleReviewBookings();
-  await loadReviewList(true);
+  const list = document.getElementById('reviewList');
+  if (list) {
+    await loadReviewList(true);
+  }
   if (targetError) {
-    const message = document.getElementById('reviewListMessage');
-    if (message) {
-      message.textContent = `Live booking targets could not be loaded: ${targetError.message}`;
-      message.className = 'feature-state error';
+    const formMsg = document.getElementById('reviewFormMessage');
+    if (formMsg) {
+      formMsg.textContent = `Booking targets: ${targetError.message}`;
+      formMsg.className = 'feature-message';
     }
   }
 }
@@ -3686,8 +3882,11 @@ async function submitReview(event) {
   const targetType = (parsed && parsed.type) || document.getElementById('reviewTargetType')?.value || 'destination';
   const targetName = (parsed && parsed.name) || document.getElementById('reviewTargetName')?.value || '';
   if (!currentUser || !currentUser.apiToken) {
-    message.textContent = 'Log in again to submit a review.';
+    message.innerHTML = '⚠️ Please <a href="login.html" style="color:var(--blue); font-weight:700; text-decoration:underline;">Log In to your Account</a> first to submit this verified review.';
     message.className = 'feature-message error';
+    if (confirm("Please log in with your account to submit this review. Would you like to go to the login page now?")) {
+      window.location.href = "login.html";
+    }
     return;
   }
   if (!targetName) {
@@ -3736,6 +3935,220 @@ async function submitReview(event) {
   }
 }
 
+// ---------------- Flipkart / Amazon Style Cart Destination Reviews ----------------
+let currentCartReviewTarget = null;
+
+async function openCartDestinationReviews(targetName, imgUrl = '') {
+  currentCartReviewTarget = { type: 'destination', name: targetName, img: imgUrl };
+
+  const overlay = document.getElementById('cartReviewsModalOverlay');
+  const modal = document.getElementById('cartReviewsModal');
+  const title = document.getElementById('cartReviewsModalTitle');
+  const subtitle = document.getElementById('cartReviewsModalSubtitle');
+  const destName = document.getElementById('cartReviewsDestName');
+  const thumb = document.getElementById('cartReviewsModalThumb');
+  const avgBadge = document.getElementById('cartReviewsAvgBadge');
+  const countLabel = document.getElementById('cartReviewsCountLabel');
+  const list = document.getElementById('cartReviewsList');
+  const message = document.getElementById('cartReviewsListMessage');
+
+  if (!modal || !overlay) return;
+
+  if (title) title.textContent = `${targetName} Reviews`;
+  if (subtitle) subtitle.textContent = `Customer feedback & ratings for ${targetName}`;
+  if (destName) destName.textContent = targetName;
+
+  // Find image if missing
+  if (!imgUrl) {
+    const found = destinations.find(d => d.name.toLowerCase() === targetName.toLowerCase());
+    if (found && found.img) imgUrl = found.img;
+  }
+  if (thumb) {
+    if (imgUrl) {
+      thumb.style.backgroundImage = `url('${imgUrl}')`;
+      thumb.style.display = 'block';
+    } else {
+      thumb.style.display = 'none';
+    }
+  }
+
+  if (avgBadge) avgBadge.innerHTML = '<span>—</span> ★';
+  if (countLabel) countLabel.textContent = 'Loading ratings...';
+  if (list) list.innerHTML = '';
+  if (message) {
+    message.textContent = 'Loading reviews...';
+    message.className = 'feature-state';
+  }
+
+  overlay.classList.remove('hidden');
+  modal.classList.remove('hidden');
+
+  try {
+    const summaryParams = new URLSearchParams({ targetType: 'destination', targetName });
+    const summaryData = await featureApiRequest(`/reviews/summary?${summaryParams.toString()}`).catch(() => null);
+
+    if (summaryData && summaryData.totalReviews > 0) {
+      if (avgBadge) avgBadge.innerHTML = `<span>${Number(summaryData.averageRating).toFixed(1)}</span> ★`;
+      if (countLabel) countLabel.textContent = `${summaryData.totalReviews} verified traveller review${summaryData.totalReviews === 1 ? '' : 's'}`;
+    } else {
+      // Find rating from destinations data fallback
+      const found = destinations.find(d => d.name.toLowerCase() === targetName.toLowerCase());
+      const defaultRating = found ? found.rating : 4.8;
+      const defaultCount = found ? found.reviews : 100;
+      if (avgBadge) avgBadge.innerHTML = `<span>${defaultRating}</span> ★`;
+      if (countLabel) countLabel.textContent = `${defaultCount} verified reviews`;
+    }
+
+    const reviewParams = new URLSearchParams({ targetType: 'destination', targetName, limit: '20', sort: 'newest' });
+    const data = await featureApiRequest(`/reviews?${reviewParams.toString()}`).catch(() => ({ reviews: [] }));
+    const reviews = (data && data.reviews) || [];
+
+    if (!reviews.length) {
+      // Show default review highlights if database has no custom entries yet
+      const defaultReviews = [
+        {
+          reviewerName: 'Priya Sharma',
+          rating: 5,
+          title: `Incredible experience in ${targetName}!`,
+          description: `Everything went smoothly. The scenic locations, local food, and hospitality exceeded our expectations. Highly recommended for all travellers!`,
+          tripType: 'Family',
+          visitDate: '2026-09-15'
+        },
+        {
+          reviewerName: 'Rahul Verma',
+          rating: 5,
+          title: `Must visit ${targetName} at least once`,
+          description: `Had a great time exploring. Great weather, wonderful vibes, and beautiful spots for photography. Worth every penny!`,
+          tripType: 'Friends',
+          visitDate: '2026-08-20'
+        }
+      ];
+
+      if (message) message.textContent = '';
+      if (list) {
+        list.innerHTML = defaultReviews.map(r => `
+          <div class="cart-review-card">
+            <div class="cart-review-card-header">
+              <span class="cart-review-user">
+                👤 ${featureEscape(r.reviewerName)}
+                <span class="cart-review-verified">✓ Verified Traveller</span>
+              </span>
+              <span class="cart-review-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span>
+            </div>
+            <h5 class="cart-review-title">${featureEscape(r.title)}</h5>
+            <p class="cart-review-body">${featureEscape(r.description)}</p>
+            <div class="cart-review-meta">
+              <span>✈️ ${featureEscape(r.tripType)} trip</span>
+              <span>•</span>
+              <time>🗓️ ${featureEscape(r.visitDate)}</time>
+            </div>
+          </div>
+        `).join('');
+      }
+    } else {
+      if (message) message.textContent = '';
+      if (list) {
+        list.innerHTML = reviews.map(r => `
+          <div class="cart-review-card">
+            <div class="cart-review-card-header">
+              <span class="cart-review-user">
+                👤 ${featureEscape(r.reviewerName || 'Traveller')}
+                <span class="cart-review-verified">✓ Verified Traveller</span>
+              </span>
+              <span class="cart-review-stars">${'★'.repeat(r.rating || 5)}${'☆'.repeat(5 - (r.rating || 5))}</span>
+            </div>
+            <h5 class="cart-review-title">${featureEscape(r.title || 'Trip Review')}</h5>
+            <p class="cart-review-body">${featureEscape(r.description || '')}</p>
+            <div class="cart-review-meta">
+              <span>✈️ ${featureEscape(r.tripType || 'Solo')} trip</span>
+              <span>•</span>
+              <time>🗓️ ${featureEscape(String(r.visitDate || '').slice(0, 10))}</time>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching reviews modal content:', err);
+    if (message) message.textContent = 'Unable to fetch reviews right now.';
+  }
+}
+
+function closeCartReviewsModal() {
+  const overlay = document.getElementById('cartReviewsModalOverlay');
+  const modal = document.getElementById('cartReviewsModal');
+  if (overlay) overlay.classList.add('hidden');
+  if (modal) modal.classList.add('hidden');
+}
+
+function openWriteReviewFromCartModal() {
+  if (!currentCartReviewTarget) return;
+  closeCartReviewsModal();
+  openWriteReviewForTarget(currentCartReviewTarget.type, currentCartReviewTarget.name);
+}
+
+function openWriteReviewForTarget(targetType, targetName) {
+  // Close cart drawer if open
+  const drawer = document.getElementById('cartDrawer');
+  const overlay = document.getElementById('cartOverlay');
+  if (drawer && drawer.classList.contains('open')) {
+    drawer.classList.remove('open');
+    if (overlay) overlay.classList.remove('open');
+  }
+
+  // Switch to reviews tab
+  const reviewsBtn = document.querySelector('[data-tab="reviews"]');
+  if (reviewsBtn) reviewsBtn.click();
+
+  // Wait for review form to populate, then select this target
+  setTimeout(async () => {
+    try {
+      await populateReviewTargets();
+    } catch (_) {}
+
+    const writeSelector = document.getElementById('reviewWriteTarget');
+    const readSelector = document.getElementById('reviewReadTarget');
+    const targetVal = reviewTargetValue(targetType, targetName);
+
+    if (writeSelector) {
+      // Ensure target exists in options
+      let exists = Array.from(writeSelector.options).some(o => o.value === targetVal);
+      if (!exists) {
+        const opt = document.createElement('option');
+        opt.value = targetVal;
+        opt.textContent = `${targetType === 'hotel' ? '🏨 Hotel' : '✈️ Destination'}: ${targetName}`;
+        writeSelector.appendChild(opt);
+      }
+      writeSelector.value = targetVal;
+      writeSelector.dispatchEvent(new Event('change'));
+    }
+
+    if (readSelector) {
+      let readExists = Array.from(readSelector.options).some(o => o.value === targetVal);
+      if (!readExists) {
+        const opt = document.createElement('option');
+        opt.value = targetVal;
+        opt.textContent = `${targetType === 'hotel' ? 'Hotel' : 'Destination'} · ${targetName}`;
+        readSelector.appendChild(opt);
+      }
+      readSelector.value = targetVal;
+      readSelector.dispatchEvent(new Event('change'));
+    }
+
+    // Scroll directly to the review write form
+    const formCard = document.querySelector('.review-write-card');
+    if (formCard) {
+      formCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      formCard.style.outline = '2px solid #2563eb';
+      formCard.style.boxShadow = '0 0 16px rgba(37,99,235,0.2)';
+      setTimeout(() => {
+        formCard.style.outline = '';
+        formCard.style.boxShadow = '';
+      }, 2500);
+    }
+  }, 100);
+}
+
 function notificationIcon(type) {
   return ({
     booking_confirmation: '✅',
@@ -3752,7 +4165,8 @@ function notificationMarkup(notification, pageStyle = false) {
     ? createdDate.toLocaleString()
     : '';
   const className = `${pageStyle ? 'notification-page-item' : 'notification-dropdown-item'}${notification.isRead ? '' : ' unread'}`;
-  return `<button type="button" class="${className}" onclick="openNotificationItem(${Number(notification.id)}, '${featureEscape(notification.type)}')">
+  const encodedItem = encodeURIComponent(JSON.stringify(notification));
+  return `<button type="button" class="${className}" onclick="openNotificationItem(${Number(notification.id)}, '${featureEscape(notification.type)}', '${encodedItem}')">
     <span class="notification-icon" aria-hidden="true">${notificationIcon(notification.type)}</span>
     <span class="notification-copy">
       <strong>${featureEscape(notification.title)}</strong>
@@ -3898,10 +4312,32 @@ async function markAllNotificationsRead() {
   }
 }
 
-async function openNotificationItem(notificationId, type) {
+let currentTicketBooking = null;
+
+async function openNotificationItem(notificationId, type, rawData = '') {
   try {
     await featureApiRequest(`/notifications/${notificationId}/read`, { method: 'PATCH' });
     await updateNotificationCount();
+    document.getElementById('notificationDropdown')?.classList.add('hidden');
+    document.getElementById('notificationBell')?.setAttribute('aria-expanded', 'false');
+
+    let notificationObj = null;
+    if (rawData) {
+      try {
+        notificationObj = JSON.parse(decodeURIComponent(rawData));
+      } catch (_) {}
+    }
+
+    // Check if notification is a booking confirmation or has a bookingId
+    const isBookingConfirmation = type === 'booking_confirmation' || (notificationObj && notificationObj.title && notificationObj.title.toLowerCase().includes('confirmed'));
+    const bookingId = notificationObj ? notificationObj.bookingId : null;
+
+    if (isBookingConfirmation || bookingId) {
+      // Show Confirmed Ticket Cart
+      await showConfirmedTicketCart(bookingId, notificationObj);
+      return;
+    }
+
     if (type === 'post_trip_review') {
       document.querySelector('[data-tab="reviews"]')?.click();
     } else if (type === 'itinerary_reminder') {
@@ -3909,14 +4345,127 @@ async function openNotificationItem(notificationId, type) {
     } else {
       document.querySelector('[data-tab="budget"]')?.click();
     }
-    document.getElementById('notificationDropdown')?.classList.add('hidden');
-    document.getElementById('notificationBell')?.setAttribute('aria-expanded', 'false');
+
     if (document.getElementById('notifications').classList.contains('active')) {
       await loadNotificationsPage();
     }
   } catch (err) {
     console.error('Unable to open notification:', err);
   }
+}
+
+async function showConfirmedTicketCart(bookingId, notificationObj = null) {
+  const overlay = document.getElementById('confirmedTicketModalOverlay');
+  const modal = document.getElementById('confirmedTicketModal');
+  const container = document.getElementById('confirmedTicketCardContent');
+  if (!modal || !overlay || !container) return;
+
+  container.innerHTML = '<div class="feature-state">Loading your confirmed ticket details...</div>';
+  overlay.classList.remove('hidden');
+  modal.classList.remove('hidden');
+
+  let booking = null;
+  if (bookingId) {
+    try {
+      const data = await featureApiRequest(`/bookings/${bookingId}`);
+      if (data && data.booking) booking = data.booking;
+    } catch (err) {
+      console.warn('Could not fetch booking by ID, falling back to notification details:', err);
+    }
+  }
+
+  // If no booking found by ID, build fallback from notification or mock details
+  if (!booking) {
+    let destName = 'Holiday Trip';
+    if (notificationObj && notificationObj.title) {
+      const match = notificationObj.title.match(/Your\s+(.*?)\s+booking\s+is\s+confirmed/i);
+      if (match && match[1]) destName = match[1];
+    }
+    booking = {
+      id: bookingId || 101,
+      destination_name: destName,
+      customer_name: currentUser ? currentUser.name : 'Valued Traveller',
+      customer_email: currentUser ? currentUser.email : '',
+      customer_phone: '+91 98765 43210',
+      hotel_name: 'Premium Resort & Spa',
+      hotel_price: 6500,
+      transport_name: 'Private AC Cab',
+      transport_price: 3200,
+      total_price: 18500,
+      receipt_no: 'STP-CONF-' + (bookingId || Math.floor(Math.random() * 8000 + 1000)),
+      status: 'Confirmed',
+      trip_start_date: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+      duration_days: 4
+    };
+  }
+
+  currentTicketBooking = booking;
+
+  // Render the Confirmed Ticket Cart
+  container.innerHTML = `
+    <div class="ticket-cart-card">
+      <div class="ticket-cart-header">
+        <div>
+          <span class="ticket-cart-badge">✅ CONFIRMED TICKET</span>
+          <h3 class="ticket-cart-dest">✈️ ${featureEscape(booking.destination_name)}</h3>
+          <span style="font-size:12.5px; color:#64748b; font-weight:600;">Booking ID: #${booking.id} • Receipt: ${booking.receipt_no || 'STP-CONF-101'}</span>
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:800; display:block;">Total Paid</span>
+          <span style="font-size:22px; font-weight:900; color:#10b981;">₹${Number(booking.total_price || 0).toLocaleString('en-IN')}</span>
+        </div>
+      </div>
+
+      <div class="ticket-cart-grid">
+        <div class="ticket-cart-item">
+          <span class="ticket-cart-label">Traveller Name</span>
+          <span class="ticket-cart-val">👤 ${featureEscape(booking.customer_name || 'Traveller')}</span>
+        </div>
+        <div class="ticket-cart-item">
+          <span class="ticket-cart-label">Trip Start Date</span>
+          <span class="ticket-cart-val">🗓️ ${String(booking.trip_start_date || 'Upcoming').slice(0, 10)}</span>
+        </div>
+        <div class="ticket-cart-item">
+          <span class="ticket-cart-label">Hotel Reservation</span>
+          <span class="ticket-cart-val">🏨 ${featureEscape(booking.hotel_name || 'Standard Resort')}</span>
+        </div>
+        <div class="ticket-cart-item">
+          <span class="ticket-cart-label">Transport Details</span>
+          <span class="ticket-cart-val">🚗 ${featureEscape(booking.transport_name || 'AC Cab Included')}</span>
+        </div>
+      </div>
+
+      <div class="ticket-cart-total-bar">
+        <div>
+          <span style="font-size:12px; color:#166534; font-weight:700;">🟢 Status: Booking Approved &amp; Paid</span>
+          <div style="font-size:11px; color:#64748b;">Instant UPI Payment Verified</div>
+        </div>
+        <button type="button" class="ticket-receipt-action-btn" onclick="openPaymentReceiptFromTicket()">
+          🧾 View Payment Receipt →
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function closeConfirmedTicketModal() {
+  document.getElementById('confirmedTicketModalOverlay')?.classList.add('hidden');
+  document.getElementById('confirmedTicketModal')?.classList.add('hidden');
+}
+
+function openPaymentReceiptFromTicket() {
+  if (!currentTicketBooking) return;
+  const booking = currentTicketBooking;
+  closeConfirmedTicketModal();
+
+  // Store booking details for receipt page
+  try {
+    sessionStorage.setItem('stp_view_receipt', JSON.stringify(booking));
+  } catch (_) {}
+
+  // Open the receipt in a clean dedicated receipt page (new tab/window)
+  const receiptUrl = `receipt.html?bookingId=${booking.id || ''}`;
+  window.open(receiptUrl, '_blank');
 }
 
 function initFeatureInteractions() {

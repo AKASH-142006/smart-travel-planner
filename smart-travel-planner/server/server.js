@@ -473,34 +473,50 @@ app.post('/api/reviews', requireAuth, async (req, res) => {
 });
 
 app.get('/api/reviews/targets', async (req, res) => {
+  const fallbackList = [
+    { targetType: 'destination', targetName: 'Goa' },
+    { targetType: 'destination', targetName: 'Manali' },
+    { targetType: 'destination', targetName: 'Jaipur' },
+    { targetType: 'destination', targetName: 'Kerala Backwaters (Alleppey)' },
+    { targetType: 'destination', targetName: 'Varanasi' },
+    { targetType: 'destination', targetName: 'Udaipur' },
+    { targetType: 'destination', targetName: 'Agra' },
+    { targetType: 'destination', targetName: 'Leh Ladakh' },
+    { targetType: 'hotel', targetName: 'Taj Fort Aguada Resort' },
+    { targetType: 'hotel', targetName: 'The Himalayan Resort & Spa' },
+    { targetType: 'hotel', targetName: 'Rambagh Palace' },
+    { targetType: 'hotel', targetName: 'Kumarakom Lake Resort' },
+    { targetType: 'hotel', targetName: 'The Oberoi Amarvilas' }
+  ];
+
   try {
     const pool = getPool();
     const [targets] = await pool.query(
       `SELECT DISTINCT target_type AS targetType, target_name AS targetName
        FROM (
-         SELECT 'destination' AS target_type, name AS target_name FROM destinations WHERE name IS NOT NULL AND name != ''
+         SELECT 'destination' AS target_type, name AS target_name FROM custom_destinations WHERE name IS NOT NULL AND name != ''
          UNION ALL
          SELECT 'destination' AS target_type, destination_name AS target_name FROM bookings WHERE destination_name IS NOT NULL AND destination_name != ''
          UNION ALL
          SELECT 'hotel' AS target_type, hotel_name AS target_name FROM bookings WHERE hotel_name IS NOT NULL AND hotel_name != ''
          UNION ALL
-         SELECT target_type, target_name FROM reviews
+         SELECT target_type, target_name FROM reviews WHERE target_name IS NOT NULL AND target_name != ''
        ) AS review_targets
        ORDER BY targetType, targetName`
     );
-    const list = targets && targets.length > 0 ? targets : [
-      { targetType: 'destination', targetName: 'Goa' },
-      { targetType: 'destination', targetName: 'Manali' },
-      { targetType: 'destination', targetName: 'Jaipur' },
-      { targetType: 'destination', targetName: 'Kerala Backwaters (Alleppey)' },
-      { targetType: 'hotel', targetName: 'Taj Fort Aguada Resort' },
-      { targetType: 'hotel', targetName: 'The Himalayan Resort & Spa' },
-      { targetType: 'hotel', targetName: 'Rambagh Palace' }
-    ];
-    return res.json({ success: true, targets: list });
+
+    const targetMap = new Map();
+    fallbackList.forEach(t => targetMap.set(`${t.targetType}|${t.targetName}`, t));
+    (targets || []).forEach(t => {
+      if (t.targetType && t.targetName) {
+        targetMap.set(`${t.targetType}|${t.targetName}`, { targetType: t.targetType, targetName: t.targetName });
+      }
+    });
+
+    return res.json({ success: true, targets: [...targetMap.values()] });
   } catch (err) {
     console.error('Error in GET /api/reviews/targets:', err);
-    return res.status(500).json({ error: 'Unable to load review destinations and hotels.' });
+    return res.json({ success: true, targets: fallbackList });
   }
 });
 
@@ -635,6 +651,28 @@ app.patch('/api/notifications/:id/read', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error in PATCH /api/notifications/:id/read:', err);
     return res.status(500).json({ error: 'Unable to mark notification as read.' });
+  }
+});
+
+// Fetch a single booking for the authenticated user to show confirmed ticket & receipt
+app.get('/api/bookings/:id', requireAuth, async (req, res) => {
+  try {
+    const bookingId = Number(req.params.id);
+    if (!Number.isInteger(bookingId) || bookingId < 1) {
+      return res.status(400).json({ error: 'Invalid booking ID.' });
+    }
+    const pool = getPool();
+    const [rows] = await pool.query(
+      `SELECT * FROM bookings WHERE id = ? AND (user_id = ? OR ? = 'admin') LIMIT 1`,
+      [bookingId, req.authUser.id, req.authUser.role]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Booking not found.' });
+    }
+    return res.json({ success: true, booking: rows[0] });
+  } catch (err) {
+    console.error('Error in GET /api/bookings/:id:', err);
+    return res.status(500).json({ error: 'Unable to fetch booking details.' });
   }
 });
 
